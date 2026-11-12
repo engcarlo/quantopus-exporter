@@ -91,4 +91,4 @@ Não. Todo o código está incluído no pacote da extensão.
 
 ### URL da política de privacidade
 Ative o GitHub Pages no repositório (Settings → Pages → Branch `main`, pasta `/docs`) e cole o link:
-`https://<seu-usuario>.github.io/quantopus-exporter/privacy-policy.html`
+`https://engcarlo.github.io/quantopus-exporter/privacy-policy.html`

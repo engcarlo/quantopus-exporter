@@ -96,7 +96,7 @@ Quando a extensão estiver publicada na Chrome Web Store e na Microsoft Edge Add
    - **Code → Download ZIP** e extraia, **ou**
    - clone o repositório:
      ```bash
-     git clone https://github.com/<seu-usuario>/quantopus-exporter.git
+     git clone https://github.com/engcarlo/quantopus-exporter.git
      ```
 2. Abra `chrome://extensions` no Chrome (ou `edge://extensions` no Edge).
 3. Ative o **Modo do desenvolvedor**, no canto superior direito.
@@ -449,7 +449,7 @@ As lojas exigem uma versão maior a cada envio.
 1. No repositório, abra **Settings → Pages**.
 2. Em **Build and deployment**, escolha **Deploy from a branch**, branch `main`, pasta `/docs`.
 3. Em alguns minutos a política estará em
-   `https://<seu-usuario>.github.io/quantopus-exporter/privacy-policy.html`.
+   `https://engcarlo.github.io/quantopus-exporter/privacy-policy.html`.
 
 ---
 
