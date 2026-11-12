@@ -15,13 +15,21 @@
 
   // ---------- Leitura do DOM ----------
 
+  // Caracteres invisíveis de direção de texto que o WhatsApp põe em volta de números.
+  const BIDI_RE = /[‎‏‪-‮⁦-⁩]/g;
+  const clean = (s) => (s || '').replace(BIDI_RE, '').replace(/\s+/g, ' ').trim();
+  // Comparação "solta": só letras e dígitos, ignorando emojis, pontuação e maiúsculas.
+  const loose = (s) => clean(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
   function getChatName() {
     const header = $main()?.querySelector('header');
     if (!header) return 'conversa';
     const el =
       header.querySelector('span[dir="auto"][title]') ||
       header.querySelector('span[dir="auto"]');
-    return ((el && (el.getAttribute('title') || el.textContent)) || 'conversa').trim();
+    if (!el) return 'conversa';
+    // textOf inclui os emojis (que são <img alt>), ao contrário de textContent.
+    return clean(el.getAttribute('title') || textOf(el)) || 'conversa';
   }
 
   function findScroller() {
@@ -358,17 +366,30 @@ ${parts.join('\n')}
   //   "false_120363…@g.us_3EB0…_5511…@c.us"       → grupo
   //   "false_123456789@lid_3EB0…"                 → contato com ID oculto (sem número)
   function chatIdentity(msgs, chatName) {
-    for (const m of msgs) {
-      const jid = /^(?:true|false)_([^_]+)_/.exec(m.id || '')?.[1];
-      if (!jid) continue;
-      if (jid.endsWith('@g.us')) return { isGroup: true, number: '' };
-      if (jid.endsWith('@c.us')) return { isGroup: false, number: '+' + jid.split('@')[0] };
-      break;
+    const ids = msgs.map((m) => m.id || '');
+    const header = $main()?.querySelector('header');
+    if (ids.some((id) => id.includes('@g.us')) || header?.querySelector('[data-icon*="group"]')) {
+      return { isGroup: true, number: '' };
+    }
+    for (const id of ids) {
+      const jid = /^(?:true|false)_(\d{8,15})@c\.us(?:_|$)/.exec(id)?.[1];
+      if (jid) return { isGroup: false, number: '+' + jid };
     }
     // Contato não salvo: o próprio título da conversa é o número.
-    if (/^[\d\s()+\-]+$/.test(chatName)) {
-      const digits = chatName.replace(/\D/g, '');
+    const title = clean(chatName);
+    if (/^[\d\s()+\-.]+$/.test(title)) {
+      const digits = title.replace(/\D/g, '');
       if (digits.length >= 8 && digits.length <= 15) return { isGroup: false, number: '+' + digits };
+    }
+    // Remetente das mensagens recebidas em conversa individual com contato não salvo.
+    for (const m of msgs) {
+      if (m.fromMe || !m.sender) continue;
+      const s = clean(m.sender);
+      if (/^\+?[\d\s()\-.]+$/.test(s)) {
+        const digits = s.replace(/\D/g, '');
+        if (digits.length >= 8 && digits.length <= 15) return { isGroup: false, number: '+' + digits };
+      }
+      break;
     }
     return { isGroup: false, number: '' };
   }
@@ -534,23 +555,78 @@ ${parts.join('\n')}
         const titleEl = row.querySelector('span[title]');
         if (!titleEl) return null;
         const unread = [...row.querySelectorAll('[aria-label]')].some((e) => UNREAD_RE.test(e.getAttribute('aria-label')));
-        return { row, title: titleEl.getAttribute('title').trim(), unread, top: row.getBoundingClientRect().top };
+        return { row, titleEl, title: clean(titleEl.getAttribute('title')), unread, top: row.getBoundingClientRect().top };
       })
       .filter((c) => c && c.title)
       .sort((a, b) => a.top - b.top);
   }
 
-  async function openChat(entry) {
-    if ($main() && getChatName() === entry.title) return true;
-    const target = entry.row.querySelector('[role="gridcell"]') || entry.row.firstElementChild || entry.row;
-    for (const type of ['mousedown', 'mouseup', 'click']) {
-      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
-    }
+  const isOpen = (entry) => !!$main() && loose(getChatName()) === loose(entry.title) && loose(entry.title) !== '';
+
+  // Simula um clique "de verdade" (ponteiro + mouse + click), no centro do elemento.
+  function realClick(el) {
+    const r = el.getBoundingClientRect();
+    const x = r.left + Math.min(r.width / 2, 80);
+    const y = r.top + r.height / 2;
+    const base = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, screenX: x, screenY: y, button: 0 };
+    const ptr = { ...base, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+    el.dispatchEvent(new PointerEvent('pointerover', ptr));
+    el.dispatchEvent(new MouseEvent('mouseover', base));
+    el.dispatchEvent(new PointerEvent('pointerdown', { ...ptr, buttons: 1 }));
+    el.dispatchEvent(new MouseEvent('mousedown', { ...base, buttons: 1 }));
+    el.focus?.({ preventScroll: true });
+    el.dispatchEvent(new PointerEvent('pointerup', ptr));
+    el.dispatchEvent(new MouseEvent('mouseup', base));
+    el.dispatchEvent(new MouseEvent('click', base));
+  }
+
+  function pressEnter(el) {
+    el.focus?.({ preventScroll: true });
+    const opts = { bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13, which: 13 };
+    el.dispatchEvent(new KeyboardEvent('keydown', opts));
+    el.dispatchEvent(new KeyboardEvent('keyup', opts));
+  }
+
+  async function waitOpen(entry, ms) {
     const t0 = Date.now();
-    while (Date.now() - t0 < 10000) {
-      await sleep(300);
-      if ($main() && getChatName() === entry.title) {
+    while (Date.now() - t0 < ms) {
+      await sleep(250);
+      if (isOpen(entry)) return true;
+    }
+    return false;
+  }
+
+  // Abre uma conversa da lista. Tenta vários alvos e formas de clique, porque o
+  // WhatsApp Web muda a estrutura da lista com frequência.
+  async function openChat(entry) {
+    if (isOpen(entry)) return true;
+    entry.row.scrollIntoView({ block: 'center' });
+    await sleep(400);
+    // A lista é virtualizada: depois de rolar, o elemento pode ter sido recriado.
+    entry = listChats().find((c) => c.title === entry.title) || entry;
+
+    const t = entry.titleEl;
+    const candidates = [
+      t.closest('[role="gridcell"]'),
+      t.closest('[tabindex]'),
+      t.closest('[role="button"]'),
+      entry.row.querySelector('[tabindex]'),
+      entry.row.firstElementChild,
+      entry.row,
+      t,
+    ].filter((el, i, arr) => el && entry.row.contains(el) && arr.indexOf(el) === i);
+
+    for (const el of candidates) {
+      realClick(el);
+      if (await waitOpen(entry, 2500)) {
         await sleep(1500); // deixa as mensagens renderizarem
+        return true;
+      }
+    }
+    for (const el of candidates.slice(0, 2)) {
+      pressEnter(el);
+      if (await waitOpen(entry, 2500)) {
+        await sleep(1500);
         return true;
       }
     }
@@ -578,6 +654,8 @@ ${parts.join('\n')}
     const seen = new Set();
     const usedNames = new Set();
     let exported = 0;
+    let openFails = 0;
+    let abortReason = '';
 
     const uniqueName = (name) => {
       let n = name;
@@ -615,8 +693,15 @@ ${parts.join('\n')}
         report('Abrindo…');
         if (!(await openChat(next))) {
           index.push({ chat: next.title, status: 'erro: não abriu' });
+          // Se várias seguidas não abrem, o WhatsApp mudou algo: para em vez de percorrer a lista toda.
+          if (++openFails >= 3) {
+            abortReason = 'Não consegui abrir as conversas automaticamente (3 tentativas seguidas falharam). ' +
+              'O WhatsApp Web pode ter mudado; atualize a extensão ou exporte as conversas uma a uma.';
+            break;
+          }
           continue;
         }
+        openFails = 0;
 
         const quick = chatIdentity(parseVisible(), next.title);
         if (quick.isGroup && !opts.includeGroups) {
@@ -649,7 +734,7 @@ ${parts.join('\n')}
         }
       }
 
-      if (!files.length) throw new Error('Nenhuma conversa foi exportada.');
+      if (!files.length) throw new Error(abortReason || 'Nenhuma conversa foi exportada.');
 
       status.textContent = 'Montando o arquivo .zip…';
       const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -662,8 +747,10 @@ ${parts.join('\n')}
       download(`Quantopus - conversas do WhatsApp - ${today()}.zip`, zip, 'application/zip');
 
       const skipped = index.length - exported;
-      finish(ov, 'Pronto!', `${exported} conversa(s) exportada(s) em ${format.toUpperCase()}` +
-        (skipped ? `, ${skipped} pulada(s) ou com erro (veja indice.csv).` : '.'), false, 15000);
+      const summary = `${exported} conversa(s) exportada(s) em ${format.toUpperCase()}` +
+        (skipped ? `, ${skipped} pulada(s) ou com erro (veja indice.csv).` : '.');
+      if (abortReason) finish(ov, 'Exportação interrompida', `${abortReason}\n\n${summary}`, true, 30000);
+      else finish(ov, 'Pronto!', summary, false, 15000);
     } catch (err) {
       finish(ov, 'Erro na exportação', err?.message || String(err), true, 15000);
     } finally {
