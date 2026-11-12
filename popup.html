@@ -31,9 +31,16 @@
   button:hover { filter: brightness(1.06); }
   button:active { transform: translateY(4px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 1px 0 var(--slab), 0 3px 6px rgba(30, 58, 138, .4); }
   button:disabled { background: #94a3b8; box-shadow: 0 5px 0 #64748b; transform: none; cursor: default; filter: none; }
-  #msg { margin-top: 12px; font-size: 12.5px; color: #334155; min-height: 1em; }
-  #msg.err { color: #b91c1c; }
-  .hidden { display: none; }
+  #msg { margin: 0 0 10px; padding: 9px 11px; border-radius: 10px; font-size: 12.5px; line-height: 1.45;
+         color: #134e4a; background: #ccfbf1; border: 1px solid #99f6e4; }
+  #msg.err { color: #991b1b; background: #fee2e2; border-color: #fecaca; }
+  #msg.ok { color: #14532d; background: #dcfce7; border-color: #bbf7d0; }
+  #msg[hidden] { display: none; }
+  #actions:empty { display: none; }
+  #actions { margin: 0 0 12px; }
+  #actions button { margin-top: 0; padding: 8px; color: #115e59; background: #fff; text-shadow: none;
+                    box-shadow: inset 0 0 0 1.5px #14b8a6, 0 3px 0 #99f6e4; }
+  #actions button:active { transform: translateY(2px); box-shadow: inset 0 0 0 1.5px #14b8a6, 0 1px 0 #99f6e4; }
   footer { margin-top: 12px; font-size: 10.5px; color: #94a3b8; text-align: center; }
 </style>
 </head>
@@ -74,8 +81,11 @@
     <h1>Quantopus Exporter<small>Conversas do WhatsApp Web · 100% local</small></h1>
   </header>
 
-  <div id="form" class="hidden">
-    <div class="chat"><b>Conversa aberta</b><span id="chatName">—</span></div>
+  <div id="msg" hidden></div>
+  <div id="actions"></div>
+
+  <div id="form">
+    <div class="chat"><b>Conversa aberta</b><span id="chatName">verificando…</span></div>
 
     <label for="format">Formato</label>
     <select id="format">
@@ -103,10 +113,9 @@
     <input type="number" id="maxMessages" min="1" step="100" placeholder="sem limite">
     <div class="hint">Exporta só as mais recentes até esse número.</div>
 
-    <button id="go">Exportar</button>
+    <button id="go" disabled>Exportar</button>
   </div>
 
-  <div id="msg"></div>
   <footer>Não afiliado ao WhatsApp nem à Meta.</footer>
 
   <script src="popup.js"></script>

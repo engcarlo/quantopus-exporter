@@ -1,8 +1,10 @@
 // Content script: lê a conversa aberta no WhatsApp Web e gera o arquivo de exportação.
 // Nada é enviado para fora do navegador.
 (() => {
-  if (window.__waExporterLoaded) return;
-  window.__waExporterLoaded = true;
+  // Sem trava de "já carregado": depois que a extensão é recarregada, o script antigo
+  // fica órfão (sem conexão com a extensão), mas a variável global continuaria marcada
+  // e impediria o novo script de se registrar. O popup só reinjeta este arquivo quando
+  // a aba não responde, então não há risco de listeners duplicados.
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const job = { running: false, cancel: false };
