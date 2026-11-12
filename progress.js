@@ -1,15 +1,43 @@
-// Janela flutuante do Quantopus Exporter: escolhe a pasta de destino, grava os arquivos
-// em segundo plano (File System Access API, na origem da extensão) e mostra o progresso.
+// Janela do Quantopus Exporter.
+// Etapa 1: escolher a pasta de destino (File System Access, na origem da extensão).
+// Etapa 2: botão "Iniciar exportação" → manda a aba do WhatsApp começar; esta janela
+// grava cada arquivo recebido na pasta escolhida e mostra o progresso.
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const tabId = Number(params.get('tab'));
 const command = params.get('cmd') === 'exportAll' ? 'exportAll' : 'export';
 const opts = JSON.parse(params.get('opts') || '{}');
 
-let dir = null; // FileSystemDirectoryHandle escolhido (null = Downloads)
+let dir = null; // FileSystemDirectoryHandle confirmado (com permissão de escrita)
 let running = false;
+let gotProgress = false;
 let startedAt = 0;
 let timer = null;
+let writes = 0;
+
+// ---------- Registro de diagnóstico ----------
+
+function log(text, isError = false) {
+  const li = document.createElement('li');
+  li.textContent = `${new Date().toLocaleTimeString('pt-BR')}  ${text}`;
+  if (isError) li.className = 'err';
+  $('log').appendChild(li);
+  $('log').scrollTop = $('log').scrollHeight;
+  if (isError) $('logBox').open = true;
+}
+const errText = (err) => `${err?.name || 'Erro'}: ${err?.message || err}`;
+
+$('copyLog').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const text = [...$('log').children].map((li) => li.textContent).join('\n');
+  try {
+    await navigator.clipboard.writeText(`Quantopus Exporter ${chrome.runtime.getManifest?.().version || ''}\n${text}`);
+    $('copyLog').textContent = 'Copiado!';
+  } catch {
+    $('copyLog').textContent = 'Não foi possível copiar';
+  }
+  setTimeout(() => ($('copyLog').textContent = 'Copiar detalhes'), 2000);
+});
 
 // ---------- Pasta guardada (IndexedDB da extensão) ----------
 
@@ -64,78 +92,125 @@ async function writeToDir(root, path, content) {
   return joinPath(...parts, name);
 }
 
-// ---------- Escolha da pasta ----------
+// Confere, de verdade, que dá para gravar na pasta: cria e apaga um arquivo de teste.
+async function probeWrite(handle) {
+  const probe = '.quantopus-teste';
+  const fh = await handle.getFileHandle(probe, { create: true });
+  const w = await fh.createWritable();
+  await w.write('ok');
+  await w.close();
+  await handle.removeEntry(probe);
+}
 
-function destError(text, kind = 'err') {
+// ---------- Etapa 1: pasta de destino ----------
+
+function destMsg(text, kind = 'err') {
   $('destMsg').textContent = text;
   $('destMsg').className = 'msg ' + kind;
   $('destMsg').hidden = !text;
 }
 
-const BLOCKED_HINT =
-  'Nenhuma pasta foi selecionada. O Chrome não permite usar a raiz de algumas pastas ' +
-  '(Downloads, Documentos, Área de Trabalho e pastas do sistema). Crie ou escolha uma ' +
-  'subpasta dentro delas, por exemplo Downloads\\Quantopus.';
+function showChosen(handle) {
+  const box = $('chosen');
+  if (handle) {
+    box.classList.add('ok');
+    $('chosenName').textContent = `✓ ${handle.name}`;
+    $('chosenHint').textContent = `Os arquivos irão para ${joinPath(handle.name, opts.folder)}/<número>/`;
+    $('startInfo').textContent = 'Pasta confirmada. Clique para começar.';
+  } else {
+    box.classList.remove('ok');
+    $('chosenName').textContent = 'Nenhuma pasta escolhida';
+    $('chosenHint').textContent = 'Escolha onde as conversas serão salvas.';
+    $('startInfo').textContent = 'Escolha a pasta acima para liberar o botão.';
+  }
+  $('startBtn').disabled = !handle;
+}
 
-// Abre o seletor de pastas. startIn = 'downloads' começa na pasta Downloads.
-async function pickFolder(startIn) {
-  destError('');
-  let d;
+// Confirma a pasta: permissão de escrita + gravação de teste. Só então libera "Iniciar".
+async function confirmFolder(handle, { request }) {
+  log(`Pasta recebida: "${handle.name}"`);
   try {
-    d = await window.showDirectoryPicker(
+    let perm = await handle.queryPermission({ mode: 'readwrite' });
+    log(`Permissão atual: ${perm}`);
+    if (perm !== 'granted' && request) {
+      perm = await handle.requestPermission({ mode: 'readwrite' });
+      log(`Permissão após pedido: ${perm}`);
+    }
+    if (perm !== 'granted') {
+      destMsg('O Chrome não autorizou gravar nessa pasta. Clique de novo e escolha "Permitir" / "Editar arquivos".');
+      return false;
+    }
+    await probeWrite(handle);
+    log('Gravação de teste na pasta: OK');
+  } catch (err) {
+    log('Falha ao confirmar a pasta — ' + errText(err), true);
+    destMsg('Não foi possível gravar nessa pasta (' + (err?.message || err) + '). Escolha outra pasta.');
+    return false;
+  }
+  dir = handle;
+  destMsg('');
+  showChosen(handle);
+  try { await idbSet('dir', handle); log('Pasta guardada para as próximas vezes.'); }
+  catch (err) { log('Não foi possível guardar a pasta (não impede a exportação) — ' + errText(err)); }
+  return true;
+}
+
+const BLOCKED_HINT =
+  'Nenhuma pasta foi selecionada. Se você escolheu Downloads, Documentos, Área de Trabalho ou uma pasta ' +
+  'do sistema, o Chrome recusa a raiz delas: crie ou escolha uma subpasta (ex.: Downloads\\Quantopus).';
+
+async function pickFolder(startIn) {
+  destMsg('');
+  log(startIn ? 'Abrindo seletor em Downloads…' : 'Abrindo seletor de pasta…');
+  let handle;
+  try {
+    handle = await window.showDirectoryPicker(
       startIn ? { id: 'quantopus-dl', mode: 'readwrite', startIn } : { id: 'quantopus', mode: 'readwrite' }
     );
   } catch (err) {
-    // O Chrome devolve "AbortError" tanto quando o usuário cancela quanto quando recusa
-    // uma pasta protegida. Nos dois casos explicamos o que fazer, em vez de não fazer nada.
-    if (err?.name === 'AbortError') destError(BLOCKED_HINT, 'info');
-    else destError('Não foi possível usar essa pasta: ' + (err?.message || err));
+    log('Seletor fechou sem pasta — ' + errText(err), err?.name !== 'AbortError');
+    destMsg(err?.name === 'AbortError' ? BLOCKED_HINT : 'Não foi possível abrir o seletor: ' + (err?.message || err),
+      err?.name === 'AbortError' ? 'info' : 'err');
     return;
   }
-  try {
-    if ((await d.queryPermission({ mode: 'readwrite' })) !== 'granted' &&
-        (await d.requestPermission({ mode: 'readwrite' })) !== 'granted') {
-      destError('O Chrome não autorizou gravar nessa pasta. Tente de novo e clique em "Permitir"/"Editar arquivos".');
-      return;
-    }
-  } catch (err) {
-    destError('Não foi possível verificar a permissão da pasta: ' + (err?.message || err));
-    return;
-  }
-  try { await idbSet('dir', d); } catch {}
-  start(d);
+  await confirmFolder(handle, { request: true });
 }
 
 async function initDest() {
   $('subtitle').textContent = command === 'exportAll' ? 'Exportar todas as conversas' : 'Exportar a conversa aberta';
+  log(`Janela aberta · aba ${tabId} · ${command} · subpasta "${opts.folder || ''}"`);
+  showChosen(null);
+
   if (typeof window.showDirectoryPicker !== 'function') {
-    $('pick').hidden = true;
-    destError('Este navegador não permite escolher pastas. Os arquivos irão para Downloads.');
+    log('Este navegador não tem showDirectoryPicker.', true);
+    destMsg('Este navegador não permite escolher pastas. Atualize o Chrome.');
+    $('pick').disabled = $('useDownloads').disabled = true;
+    return;
   }
+
   let saved = null;
-  try { saved = await idbGet('dir'); } catch {}
-  if (saved) {
-    const btn = $('useSaved');
-    btn.hidden = false;
-    btn.textContent = `Usar a pasta "${saved.name}"`;
-    $('pick').textContent = 'Escolher outra pasta…';
-    $('pick').className = 'ghost';
-    btn.addEventListener('click', async () => {
-      try {
-        const perm = await saved.requestPermission({ mode: 'readwrite' });
-        if (perm === 'granted') start(saved);
-        else destError('Sem permissão para gravar nessa pasta. Autorize ou escolha outra.');
-      } catch (err) {
-        destError('Não foi possível usar essa pasta: ' + (err?.message || err));
-      }
-    });
-  }
+  try { saved = await idbGet('dir'); } catch (err) { log('Sem pasta guardada — ' + errText(err)); }
+  if (!saved) { log('Nenhuma pasta usada antes.'); return; }
+
+  log(`Última pasta usada: "${saved.name}"`);
+  // Se a permissão ainda vale (mesma sessão do Chrome), já deixa confirmada.
+  try {
+    if ((await saved.queryPermission({ mode: 'readwrite' })) === 'granted') {
+      await confirmFolder(saved, { request: false });
+      return;
+    }
+  } catch {}
+  const btn = $('useSaved');
+  btn.hidden = false;
+  btn.textContent = `Usar a última pasta: "${saved.name}"`;
+  btn.addEventListener('click', () => confirmFolder(saved, { request: true }));
 }
 
 $('pick').addEventListener('click', () => pickFolder());
 $('useDownloads').addEventListener('click', () => pickFolder('downloads'));
+$('startBtn').addEventListener('click', () => { if (dir) start(); });
 
-// ---------- Execução e progresso ----------
+// ---------- Etapa 2: execução e progresso ----------
 
 function fmtTime(ms) {
   const s = Math.floor(ms / 1000);
@@ -151,26 +226,28 @@ function runMsg(text, kind) {
   $('runMsg').hidden = !text;
 }
 
-async function start(chosen) {
-  dir = chosen;
+async function start() {
+  $('startBtn').disabled = true;
   $('stepDest').hidden = true;
   $('stepRun').hidden = false;
   $('stats').hidden = command !== 'exportAll';
-  $('dest').textContent = 'Destino: ' + joinPath(dir ? dir.name : 'Downloads', opts.folder);
+  $('dest').textContent = 'Destino: ' + joinPath(dir.name, opts.folder);
+  $('now').textContent = `Pasta "${dir.name}" confirmada. Iniciando…`;
   running = true;
   startedAt = Date.now();
   timer = setInterval(() => ($('elapsed').textContent = fmtTime(Date.now() - startedAt)), 1000);
 
-  $('now').textContent = `Pasta "${dir ? dir.name : 'Downloads'}" selecionada. Iniciando…`;
-
-  const runOpts = { ...opts, saveMode: dir ? 'dir' : 'downloads', destName: dir ? dir.name : 'Downloads' };
+  const runOpts = { ...opts, saveMode: 'dir', destName: dir.name };
+  log(`Enviando "${command}" para a aba ${tabId}…`);
   try {
     const res = await chrome.tabs.sendMessage(tabId, { cmd: command, opts: runOpts });
+    log('Resposta da aba: ' + JSON.stringify(res));
     if (!res?.ok) {
-      finish({ error: true, title: 'Não foi possível começar', text: res?.error || 'A aba do WhatsApp não respondeu.' });
+      finish({ error: true, title: 'Não foi possível começar', text: res?.error || 'A aba do WhatsApp recusou o pedido.' });
       return;
     }
   } catch (err) {
+    log('A aba não respondeu — ' + errText(err), true);
     finish({
       error: true,
       title: 'Não foi possível começar',
@@ -178,19 +255,16 @@ async function start(chosen) {
     });
     return;
   }
-  // Se a aba aceitou mas nenhum progresso chegar, avisa em vez de ficar parado em silêncio.
   setTimeout(() => {
     if (running && !gotProgress) {
-      runMsg('A aba do WhatsApp não enviou nenhum progresso. Se a extensão foi atualizada agora, ' +
-        'recarregue o WhatsApp Web (F5) e comece de novo.', 'err');
+      log('Nenhum progresso recebido em 10 s.', true);
+      runMsg('A aba do WhatsApp não enviou progresso. Recarregue o WhatsApp Web (F5) e comece de novo.', 'err');
     }
   }, 10000);
 }
 
-let gotProgress = false;
-
 function update(p) {
-  if (!gotProgress) { gotProgress = true; runMsg(''); }
+  if (!gotProgress) { gotProgress = true; runMsg(''); log('Progresso recebido da aba.'); }
   if (p.chat) $('now').textContent = p.chat;
   if (p.text != null) $('text').textContent = p.text;
   const bar = $('bar');
@@ -209,15 +283,18 @@ function update(p) {
 }
 
 function finish(p) {
+  if (!running && $('stop').hidden) return;
   running = false;
   clearInterval(timer);
-  $('runTitle').textContent = p.error ? '2 · Interrompido' : '2 · Concluído';
+  log(`Fim: ${p.title || ''} — ${String(p.text || '').replace(/\n/g, ' | ')}`, !!p.error);
+  $('runTitle').textContent = p.error ? 'Interrompido' : 'Concluído';
   $('now').textContent = p.title || (p.error ? 'Erro' : 'Pronto!');
   const bar = $('bar');
   bar.classList.remove('indeterminate');
   if (!p.error) bar.firstElementChild.style.width = '100%';
   if (p.text) $('text').textContent = p.text;
-  runMsg(p.error ? 'A exportação não terminou normalmente. Veja a mensagem acima.' : 'Exportação concluída. Você já pode fechar esta janela.', p.error ? 'err' : 'ok');
+  runMsg(p.error ? 'A exportação não terminou normalmente. Veja os detalhes abaixo.' : `Exportação concluída: ${writes} arquivo(s) gravado(s). Pode fechar esta janela.`,
+    p.error ? 'err' : 'ok');
   $('stop').hidden = true;
   $('close').hidden = false;
   $('keepOpen').hidden = true;
@@ -226,7 +303,8 @@ function finish(p) {
 $('stop').addEventListener('click', async () => {
   $('stop').disabled = true;
   $('stop').textContent = 'Parando…';
-  try { await chrome.tabs.sendMessage(tabId, { cmd: 'cancel' }); } catch {}
+  log('Pedido de parada enviado.');
+  try { await chrome.tabs.sendMessage(tabId, { cmd: 'cancel' }); } catch (err) { log('Parada não entregue — ' + errText(err), true); }
 });
 $('close').addEventListener('click', () => window.close());
 
@@ -234,22 +312,36 @@ window.addEventListener('beforeunload', (e) => {
   if (running) { e.preventDefault(); e.returnValue = ''; }
 });
 
-// Mensagens do content script da aba do WhatsApp.
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+function onMessage(msg, sender, sendResponse) {
   if (sender.tab?.id !== tabId) return;
   if (msg?.cmd === 'write') {
-    if (!dir) { sendResponse({ ok: false, error: 'sem pasta escolhida' }); return; }
+    if (!dir) { sendResponse({ ok: false, error: 'nenhuma pasta confirmada' }); return; }
     writeToDir(dir, msg.path, msg.content)
-      .then((written) => sendResponse({ ok: true, where: joinPath(dir.name, written) }))
-      .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
+      .then((written) => {
+        writes++;
+        log(`Gravado: ${written}`);
+        sendResponse({ ok: true, where: joinPath(dir.name, written) });
+      })
+      .catch((err) => {
+        log(`Falha ao gravar ${msg.path} — ${errText(err)}`, true);
+        sendResponse({ ok: false, error: err?.message || String(err) });
+      });
     return true;
   }
   if (msg?.cmd === 'progress') update(msg);
-});
+}
 
-if (!tabId) {
-  destError('Abra esta janela pelo botão Exportar do Quantopus Exporter.');
-  for (const id of ['useSaved', 'pick', 'useDownloads']) $(id).disabled = true;
-} else {
+function boot() {
+  chrome.runtime.onMessage.addListener(onMessage);
+  if (!tabId) {
+    log('Janela aberta sem aba de origem.', true);
+    destMsg('Abra esta janela pelo botão Exportar do Quantopus Exporter.');
+    for (const id of ['useSaved', 'pick', 'useDownloads']) $(id).disabled = true;
+    return;
+  }
   initDest();
 }
+
+// Fora da extensão (testes), o boot é chamado manualmente depois de simular a API.
+if (globalThis.chrome?.runtime?.onMessage) boot();
+else globalThis.__quantopusBoot = boot;

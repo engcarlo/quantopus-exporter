@@ -121,9 +121,12 @@ Quando a extensão estiver publicada na Chrome Web Store e na Microsoft Edge Add
    - o **ritmo** de carregamento;
    - opcionalmente, **a partir de qual data** e o **máximo de mensagens**.
 4. Clique em **Exportar**. Abre a **janela flutuante do Quantopus**:
-   1. escolha onde salvar (veja [Pasta de salvamento](#pasta-de-salvamento));
-   2. acompanhe o progresso: barra de avanço, conversa atual, "Conversa X de Y", tempo decorrido e, na exportação de todas, os contadores de **salvas**, **puladas** e **erros**;
-   3. o botão **Parar e salvar o que já exportou** interrompe quando você quiser.
+   1. **Pasta de destino:** escolha a pasta (veja [Pasta de salvamento](#pasta-de-salvamento)). Quando ela é confirmada, aparece **"✓ nome-da-pasta"** em verde. A extensão faz uma gravação de teste para garantir que pode gravar ali;
+   2. **Iniciar:** clique em **Iniciar exportação**. O botão só é liberado depois que a pasta está confirmada;
+   3. acompanhe o progresso: barra de avanço, conversa atual, "Conversa X de Y", tempo decorrido e, na exportação de todas, os contadores de **salvas**, **puladas** e **erros**;
+   4. o botão **Parar e salvar o que já exportou** interrompe quando você quiser.
+
+   Em **Detalhes técnicos**, no rodapé da janela, fica o registro de cada passo: pasta recebida, permissão, gravação de teste, arquivos gravados e erros. Se algo der errado, use **Copiar detalhes** e envie o texto ao abrir uma *issue*.
 5. O painel no canto inferior direito do WhatsApp mostra o mesmo progresso, com barra:
    - `Carregando histórico… 1.240 mensagens`
    - `Pausa curta (15 s)… 2.500 mensagens até agora`
