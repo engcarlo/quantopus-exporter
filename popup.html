@@ -45,6 +45,7 @@
   .folder input[type="text"] { flex: 1; min-width: 0; border: 0; box-shadow: none; padding: 7px 8px 7px 2px; font: inherit; background: transparent; }
   .folder:focus-within { outline: 2px solid var(--blue-top); outline-offset: 1px; }
   .folder input:focus { outline: none; }
+  .hint a { color: var(--blue); font-weight: 600; }
   #msg { margin: 0 0 10px; padding: 9px 11px; border-radius: 10px; font-size: 12.5px; line-height: 1.45;
          color: #134e4a; background: #ccfbf1; border: 1px solid #99f6e4; }
   #msg.err { color: #991b1b; background: #fee2e2; border-color: #fecaca; }
@@ -104,12 +105,13 @@
       <label class="mode"><input type="radio" name="mode" value="all"><span>Todas as conversas</span></label>
     </div>
 
-    <label for="folder">Subpasta de salvamento</label>
+    <label for="folder">Salvar em</label>
     <div class="folder">
-      <span>&lt;pasta escolhida&gt;/</span>
-      <input type="text" id="folder" placeholder="(nenhuma)" spellcheck="false">
+      <span>Downloads/</span>
+      <input type="text" id="folder" placeholder="Quantopus Exporter" spellcheck="false">
     </div>
-    <div class="hint">Ao exportar, abre a janela do Quantopus: escolha a pasta do computador (só na 1ª vez) e acompanhe o progresso. Os arquivos vão para <b>&lt;subpasta&gt;/&lt;número&gt;/</b>.</div>
+    <div class="hint">Cada conversa vai para <b>Downloads/&lt;pasta&gt;/&lt;número&gt;/</b>, sem perguntar nada.</div>
+    <div class="hint">O Chrome abre "Salvar como" a cada arquivo? <a href="#" id="openDlSettings">Desligue "Perguntar onde salvar"</a> (uma vez só).</div>
 
     <div class="chat" id="oneBox" style="margin-top:10px"><b>Conversa aberta</b><span id="chatName">verificando…</span></div>
 

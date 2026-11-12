@@ -120,36 +120,26 @@ Quando a extensão estiver publicada na Chrome Web Store e na Microsoft Edge Add
    - se quer **carregar todo o histórico**;
    - o **ritmo** de carregamento;
    - opcionalmente, **a partir de qual data** e o **máximo de mensagens**.
-4. Clique em **Exportar**. Abre a **janela flutuante do Quantopus**:
-   1. **Pasta de destino:** escolha a pasta (veja [Pasta de salvamento](#pasta-de-salvamento)). Quando ela é confirmada, aparece **"✓ nome-da-pasta"** em verde. A extensão faz uma gravação de teste para garantir que pode gravar ali;
-   2. **Iniciar:** clique em **Iniciar exportação**. O botão só é liberado depois que a pasta está confirmada;
-   3. acompanhe o progresso: barra de avanço, conversa atual, "Conversa X de Y", tempo decorrido e, na exportação de todas, os contadores de **salvas**, **puladas** e **erros**;
-   4. o botão **Parar e salvar o que já exportou** interrompe quando você quiser.
+4. Clique em **Exportar**. Abre a **janela de progresso do Quantopus**, que começa sozinha e mostra:
+   - barra de avanço, conversa atual, "Conversa X de Y" e tempo decorrido;
+   - na exportação de todas, os contadores de **salvas**, **puladas** e **erros**;
+   - o botão **Parar e salvar o que já exportou**.
 
-   Em **Detalhes técnicos**, no rodapé da janela, fica o registro de cada passo: pasta recebida, permissão, gravação de teste, arquivos gravados e erros. Se algo der errado, use **Copiar detalhes** e envie o texto ao abrir uma *issue*.
+   Em **Detalhes técnicos**, no rodapé da janela, fica o registro de cada passo e de cada arquivo salvo. Se algo der errado, use **Copiar detalhes** e envie o texto ao abrir uma *issue*.
 5. O painel no canto inferior direito do WhatsApp mostra o mesmo progresso, com barra:
    - `Carregando histórico… 1.240 mensagens`
    - `Pausa curta (15 s)… 2.500 mensagens até agora`
-
-> **Mantenha a janela do Quantopus aberta até terminar:** é ela que grava os arquivos na pasta escolhida. Se ela for fechada no meio, os arquivos seguintes vão para Downloads.
-6. No fim, o arquivo é **salvo em segundo plano**, sem janela de "Salvar como", em
-   `<pasta escolhida>/<subpasta>/<número>/WhatsApp - <número> - <nome da conversa> - <AAAA-MM-DD>.<formato>`.
+6. Cada arquivo é **salvo direto** em
+   `Downloads/<pasta>/<número>/WhatsApp - <número> - <nome da conversa> - <AAAA-MM-DD>.<formato>`.
    Em grupos, a pasta e o nome começam com `Grupo - …`. Se o número não estiver disponível (veja [Limitações](#limitações-conhecidas)), a pasta fica `Sem número - <nome>`.
 
 ### Pasta de salvamento
 
-A janela do Quantopus pergunta onde salvar antes de começar:
+A pasta é definida em **um único lugar**: o campo **Salvar em** do popup, `Downloads/` + o nome que você quiser (padrão `Quantopus Exporter`). Use `/` para subpastas, por exemplo `Clientes/2026`. A extensão lembra o último nome usado.
 
-| Botão | O que faz |
-|---|---|
-| **Escolher pasta…** | Abre a janela do sistema para escolher **qualquer pasta do computador**, inclusive em outro disco. Isso acontece só uma vez; depois, tudo é gravado em segundo plano. |
-| **Usar a pasta "…"** | Reaproveita a pasta escolhida antes. O Chrome pede para reautorizar uma vez por sessão do navegador, com um clique. |
-| **Escolher uma subpasta de Downloads…** | Abre o seletor já dentro de Downloads, para escolher ou criar uma subpasta (ex.: `Downloads\Quantopus`). |
-
-- O campo **Subpasta de salvamento** do popup (padrão `Quantopus Exporter`) cria uma subpasta dentro da pasta escolhida. Deixe vazio para salvar direto nela, ou use `/` para níveis, por exemplo `Clientes/2026`.
-- Arquivos existentes **não são sobrescritos**: se o nome já existir, o novo vira `… (2).txt`.
-- Todos os modos gravam pela janela do Quantopus, então a opção **"Perguntar onde salvar cada arquivo"** do Chrome não interfere. Ela só volta a valer se a janela for fechada no meio da exportação: aí os arquivos restantes vão pelo download comum.
-- **O Chrome não aceita a raiz de algumas pastas:** `Downloads`, `Documentos`, `Área de Trabalho`, a pasta do usuário e pastas do sistema (`C:\`, `C:\Windows` etc.). Se você escolher uma delas, a janela avisa. Crie ou escolha uma **subpasta**, por exemplo `Downloads\Quantopus`; o seletor do Windows tem o botão **Nova pasta**.
+- **O Chrome abre "Salvar como" a cada arquivo?** É a opção **"Perguntar onde salvar cada arquivo"** do próprio Chrome. Desligue-a **uma vez**: no popup, clique em **Desligue "Perguntar onde salvar"** (ou abra `chrome://settings/downloads`). A partir daí, tudo é salvo sem perguntar.
+- **Quer salvar em outro disco ou pasta?** Mude a pasta de downloads do Chrome em `chrome://settings/downloads` → **Local**. A pasta do Quantopus passa a ser criada lá dentro.
+- Se um arquivo com o mesmo nome já existir, o Chrome salva o novo como `… (1).txt`, sem apagar o anterior.
 
 O número do contato é lido no painel **Dados do contato**, que a extensão abre e fecha sozinha em cada conversa. Isso leva cerca de 1 a 3 s e não altera nada na conversa.
 
@@ -172,7 +162,7 @@ O número do contato é lido no painel **Dados do contato**, que a extensão abr
 4. No fim, salva também um **índice** da execução. O resultado fica assim:
 
 ```text
-<pasta escolhida>/Quantopus Exporter/
+Downloads/Quantopus Exporter/
 ├── +5511999999999/
 │   └── WhatsApp - +5511999999999 - Ana - 2026-11-12.txt
 ├── +5521988887777/
@@ -207,7 +197,7 @@ Como cada conversa é gravada assim que termina, nada se perde se o processo for
 | **Pular não lidas** *(todas)* | ligado / desligado | Não abre conversas com mensagens não lidas, para não marcá-las como lidas. |
 | **Incluir grupos** *(todas)* | ligado / desligado | Inclui ou não os grupos na exportação. |
 | **Máximo de conversas** *(todas)* | número (opcional) | Para depois de exportar essa quantidade de conversas, de cima para baixo na lista. |
-| **Subpasta de salvamento** | texto | Subpasta criada dentro da pasta escolhida (ou de Downloads). Veja [Pasta de salvamento](#pasta-de-salvamento). |
+| **Salvar em** | texto | Pasta dentro de Downloads onde tudo é salvo. Veja [Pasta de salvamento](#pasta-de-salvamento). |
 | **Formato** | TXT, HTML, CSV, JSON | Tipo do arquivo gerado. Veja [Formatos de saída](#formatos-de-saída). A extensão lembra a última escolha. |
 | **Carregar todo o histórico** | ligado / desligado | **Ligado:** rola a conversa até o início, carregando as mensagens antigas. **Desligado:** exporta só o que já está carregado na tela. |
 | **Ritmo de carregamento** | Normal (2 s) / Cauteloso (3 s) | Tempo de espera entre uma rolagem e a próxima. A cada 50 rolagens há uma pausa de 15 s. A extensão lembra a escolha. |
@@ -350,7 +340,7 @@ Para integrar com outros sistemas, rodar análises em Python ou JavaScript ou im
 |---|---|
 | Acesso a `https://web.whatsapp.com/*` | Ler a conversa aberta para gerar o arquivo. Nenhum outro site é acessado. |
 | `scripting` | Ativar a extensão numa aba do WhatsApp Web que já estava aberta antes da instalação, sem precisar recarregar. |
-| `downloads` | Salvar em Downloads, quando você escolhe essa opção em vez de uma pasta do computador. |
+| `downloads` | Salvar os arquivos em Downloads/<pasta>/<número>/. |
 
 A política de privacidade completa está em [`docs/privacy-policy.html`](docs/privacy-policy.html).
 
@@ -468,7 +458,7 @@ quantopus-exporter/
 ├── content.js               leitura das mensagens, rolagem, geração e download do arquivo
 ├── content.css              painel de progresso exibido no WhatsApp Web
 ├── popup.html / popup.js    janela de opções da extensão
-├── progress.html / .js      janela flutuante: escolha da pasta, gravação e barra de progresso
+├── progress.html / .js      janela de progresso (barra, contadores, registro)
 ├── icons/                   ícones 16, 48 e 128 px
 ├── scripts/
 │   ├── make-images.ps1      gera os ícones, o logo 512 px e a imagem promocional (3D)

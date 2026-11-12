@@ -63,6 +63,10 @@ async function init() {
   if (load('format')) $('format').value = load('format');
   if (load('speed')) $('speed').value = load('speed');
   $('folder').value = load('folder') ?? 'Quantopus Exporter';
+  $('openDlSettings').addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: 'chrome://settings/downloads' });
+  });
   if (load('mode') === 'all') document.querySelector('input[name="mode"][value="all"]').checked = true;
   for (const r of document.querySelectorAll('input[name="mode"]')) {
     r.addEventListener('change', () => { save('mode', mode()); refresh(); });
@@ -99,7 +103,7 @@ $('go').addEventListener('click', async () => {
     since: $('since').value || null,
     delay: Number($('speed').value),
     maxMessages: parseInt($('maxMessages').value, 10) || 0,
-    folder: $('folder').value.trim(),
+    folder: $('folder').value.trim() || 'Quantopus Exporter',
   };
   save('folder', $('folder').value.trim());
   if (all) {

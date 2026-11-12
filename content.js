@@ -520,7 +520,13 @@ ${parts.join('\n')}
 
   // Destino escolhido na janela do Quantopus: "dir" (pasta do computador, gravada pela
   // própria janela) ou "downloads" (chrome.downloads, pelo service worker).
-  const destOf = (opts) => ({ mode: opts.saveMode === 'dir' ? 'dir' : 'downloads', name: opts.destName || 'Downloads' });
+  // Destino único: Downloads/<pasta>/… via chrome.downloads (service worker).
+  const destOf = () => ({ mode: 'downloads', name: 'Downloads' });
+
+  // Avisa a janela de progresso de cada arquivo salvo (só para o registro).
+  function notifySaved(where) {
+    try { chrome.runtime.sendMessage({ cmd: 'progress', saved: where }).catch(() => {}); } catch {}
+  }
 
   // Salva o arquivo no destino; se a pasta falhar (ex.: janela fechada), cai para Downloads.
   async function saveFile(dest, path, content, mime) {
@@ -671,6 +677,7 @@ ${parts.join('\n')}
       const path = joinPath(subfolder(opts), folderName(info), file.name);
       status.textContent = 'Salvando…';
       const saved = await saveFile(dest, path, file.content, file.mime);
+            if (saved.ok) notifySaved(saved.where);
       finish(ov, 'Pronto!', `${info.msgs.length} mensagens exportadas em ${format.toUpperCase()}.\n` +
         (saved.ok ? `Salvo em ${saved.where}` : `Salvo na pasta padrão de downloads (${saved.error}).`), false, 10000);
     } catch (err) {
@@ -895,6 +902,7 @@ ${parts.join('\n')}
             const path = joinPath(base, folderName(info), file.name);
             report('Salvando…');
             const saved = await saveFile(dest, path, file.content, file.mime);
+            if (saved.ok) notifySaved(saved.where);
             if (!saved.ok) saveFails++;
             exported++;
             index.push({

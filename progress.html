@@ -86,29 +86,7 @@
   </header>
 
   <main>
-    <section id="stepDest">
-      <div class="card">
-        <h2>1 · Pasta de destino</h2>
-        <div class="chosen" id="chosen">
-          <span class="dot" id="chosenDot"></span>
-          <div><b id="chosenName">Nenhuma pasta escolhida</b><small id="chosenHint">Escolha onde as conversas serão salvas.</small></div>
-        </div>
-        <button id="authorize" class="primary" hidden></button>
-        <button id="useSaved" class="ghost" hidden></button>
-        <button id="pick" class="ghost">Escolher pasta…</button>
-        <button id="useDownloads" class="ghost">Escolher subpasta de Downloads…</button>
-        <p class="hint">O Chrome não aceita a raiz de Downloads, Documentos ou Área de Trabalho. Use uma subpasta, por exemplo <b>Downloads\Quantopus</b> (crie-a com "Nova pasta" na própria janela de escolha).</p>
-        <div id="destMsg" class="msg err" hidden></div>
-      </div>
-
-      <div class="card">
-        <h2>2 · Iniciar</h2>
-        <p id="startInfo">Escolha a pasta acima para liberar o botão.</p>
-        <button id="startBtn" class="primary" disabled>Iniciar exportação</button>
-      </div>
-    </section>
-
-    <section id="stepRun" hidden>
+    <section id="stepRun">
       <div class="card">
         <h2 id="runTitle">Exportando</h2>
         <div class="now" id="now">Preparando…</div>
@@ -125,7 +103,7 @@
         <button id="stop" class="danger">Parar e salvar o que já exportou</button>
         <button id="close" class="ghost" hidden>Fechar</button>
       </div>
-      <div class="note" id="keepOpen">Mantenha esta janela e a aba do WhatsApp abertas. Não use o WhatsApp nessa aba até terminar.</div>
+      <div class="note" id="keepOpen">Mantenha a aba do WhatsApp aberta e não a use até terminar. Se o Chrome abrir "Salvar como" a cada arquivo, <a href="#" id="openDlSettings">desligue "Perguntar onde salvar"</a>.</div>
     </section>
 
     <details class="card log" id="logBox">

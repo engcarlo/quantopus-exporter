@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Quantopus Exporter: exporte conversas do WhatsApp Web",
   "short_name": "Quantopus Exporter",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Exporte a conversa aberta no WhatsApp Web para TXT, HTML, CSV ou JSON. 100% local. Não afiliada ao WhatsApp ou à Meta.",
   "icons": {
     "16": "icons/16.png",

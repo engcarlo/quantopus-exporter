@@ -33,7 +33,7 @@ FORMATOS
 
 RECURSOS
 • Exporta todas as conversas de uma vez, salvando cada uma na hora numa pasta nomeada pelo número do contato.
-• Você escolhe uma vez a pasta do computador; depois os arquivos são gravados em segundo plano, sem janelas de "Salvar como".
+• Você define a pasta de salvamento (dentro de Downloads) antes de começar; cada conversa é salva direto, numa subpasta com o número.
 • O número do contato aparece no nome dos arquivos.
 • Carrega o histórico completo da conversa, ou só a partir de uma data.
 • Limite opcional de número de mensagens.
