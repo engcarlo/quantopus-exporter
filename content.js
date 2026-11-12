@@ -1067,6 +1067,7 @@ ${parts.join('\n')}
         hasList: !!$pane(),
         chatName: inChat ? getChatName() : null,
         running: job.running,
+        version: chrome.runtime.getManifest().version,
       });
     } else if (msg?.cmd === 'export' || msg?.cmd === 'exportAll') {
       const all = msg.cmd === 'exportAll';

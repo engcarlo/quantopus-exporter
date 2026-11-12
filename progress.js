@@ -62,7 +62,10 @@ async function start() {
   const version = globalThis.chrome?.runtime?.getManifest?.().version || '?';
   $('subtitle').textContent = (command === 'exportAll' ? 'Exportar todas as conversas' : 'Exportar a conversa aberta') + ` · v${version}`;
   $('stats').hidden = command !== 'exportAll';
-  $('dest').textContent = `Salvando em: Downloads/${opts.folder || 'Quantopus Exporter'}/`;
+  const folder = `Downloads/${opts.folder || 'Quantopus Exporter'}/`;
+  $('dest').textContent = command === 'exportAll' && !opts.separateFiles
+    ? `Entrega: um único .zip em ${folder} (uma pasta por número dentro dele)`
+    : `Salvando em: ${folder}`;
   $('now').textContent = 'Iniciando…';
   log(`Janela aberta · v${version} · aba ${tabId} · ${command} · Downloads/${opts.folder || ''}`);
 

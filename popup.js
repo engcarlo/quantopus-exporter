@@ -35,7 +35,12 @@ function refresh() {
   $('chatName').textContent = st?.chatName || '—';
   if (!st) { $('go').disabled = true; return; }
 
-  if (st.running) {
+  if (st.version !== VERSION) {
+    // A aba ainda roda o código de uma versão anterior: exportar agora usaria o comportamento antigo.
+    $('go').disabled = true;
+    show(`A aba do WhatsApp está com uma versão antiga da extensão (${st.version || 'anterior'}). Recarregue o WhatsApp para usar a v${VERSION}.`, 'err');
+    action('Recarregar WhatsApp Web', async () => { await chrome.tabs.reload(tabId); window.close(); });
+  } else if (st.running) {
     $('go').disabled = true;
     show('Já existe uma exportação em andamento nesta aba.');
   } else if (all) {
@@ -59,7 +64,10 @@ async function send(msg) {
   }
 }
 
+const VERSION = chrome.runtime.getManifest().version;
+
 async function init() {
+  $('headerSub').textContent = `Conversas do WhatsApp Web · v${VERSION}`;
   if (load('format')) $('format').value = load('format');
   if (load('speed')) $('speed').value = load('speed');
   $('folder').value = load('folder') ?? 'Quantopus Exporter';
