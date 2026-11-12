@@ -124,19 +124,24 @@ Quando a extensão estiver publicada na Chrome Web Store e na Microsoft Edge Add
 5. Um painel no canto inferior direito do WhatsApp mostra o progresso:
    - `Carregando histórico… 1.240 mensagens`
    - `Pausa curta (15 s)… 2.500 mensagens até agora`
-6. No fim, o arquivo é **salvo direto no disco**, sem janela de "Salvar como", em
-   `Downloads/<pasta de salvamento>/<número>/WhatsApp - <número> - <nome da conversa> - <AAAA-MM-DD>.<formato>`.
+6. No fim, o arquivo é **salvo em segundo plano**, sem janela de "Salvar como", em
+   `<pasta escolhida>/<subpasta>/<número>/WhatsApp - <número> - <nome da conversa> - <AAAA-MM-DD>.<formato>`.
    Em grupos, a pasta e o nome começam com `Grupo - …`. Se o número não estiver disponível (veja [Limitações](#limitações-conhecidas)), a pasta fica `Sem número - <nome>`.
 
 ### Pasta de salvamento
 
-No campo **Pasta de salvamento** do popup você define, antes de exportar, onde os arquivos vão ficar. O padrão é `Quantopus Exporter`.
+Na **primeira exportação**, o painel no canto do WhatsApp pergunta onde salvar:
 
-- A pasta é criada **dentro da pasta de Downloads do Chrome**. É uma regra de segurança do navegador: extensões só gravam ali.
-- Use `/` para subpastas, por exemplo `Clientes/2026`.
-- Para salvar em outro disco ou lugar, mude a pasta de downloads do próprio Chrome em **Configurações → Downloads → Local**.
-- Se a opção **"Perguntar onde salvar cada arquivo"** estiver ligada no Chrome, ele pode abrir a janela de salvar a cada conversa. Desligue-a para a exportação em lote ficar automática.
-- A extensão lembra a última pasta usada.
+| Botão | O que faz |
+|---|---|
+| **Escolher pasta…** | Abre a janela do sistema para escolher **qualquer pasta do computador**, inclusive em outro disco. Isso acontece só uma vez; depois, tudo é gravado em segundo plano. |
+| **Usar a pasta "…"** | Reaproveita a pasta escolhida antes. O Chrome pede para reautorizar uma vez por sessão do navegador, com um clique. |
+| **Usar a pasta Downloads** | Salva dentro da pasta de Downloads do Chrome. |
+
+- O campo **Subpasta de salvamento** do popup (padrão `Quantopus Exporter`) cria uma subpasta dentro da pasta escolhida. Deixe vazio para salvar direto nela, ou use `/` para níveis, por exemplo `Clientes/2026`.
+- Arquivos existentes **não são sobrescritos**: se o nome já existir, o novo vira `… (2).txt`.
+- Na opção **Downloads**, se o Chrome estiver com **"Perguntar onde salvar cada arquivo"** ligado, ele abre a janela de salvar a cada arquivo. Prefira **Escolher pasta…**, ou desligue essa opção em `chrome://settings/downloads`.
+- O Chrome não deixa escolher algumas pastas do sistema (como `C:\`, `C:\Windows` ou a raiz da pasta do usuário). Nesses casos, crie ou escolha uma subpasta.
 
 O número do contato é lido no painel **Dados do contato**, que a extensão abre e fecha sozinha em cada conversa. Isso leva cerca de 1 a 3 s e não altera nada na conversa.
 
@@ -159,7 +164,7 @@ O número do contato é lido no painel **Dados do contato**, que a extensão abr
 4. No fim, salva também um **índice** da execução. O resultado fica assim:
 
 ```text
-Downloads/Quantopus Exporter/
+<pasta escolhida>/Quantopus Exporter/
 ├── +5511999999999/
 │   └── WhatsApp - +5511999999999 - Ana - 2026-11-12.txt
 ├── +5521988887777/
@@ -194,7 +199,7 @@ Como cada conversa é gravada assim que termina, nada se perde se o processo for
 | **Pular não lidas** *(todas)* | ligado / desligado | Não abre conversas com mensagens não lidas, para não marcá-las como lidas. |
 | **Incluir grupos** *(todas)* | ligado / desligado | Inclui ou não os grupos na exportação. |
 | **Máximo de conversas** *(todas)* | número (opcional) | Para depois de exportar essa quantidade de conversas, de cima para baixo na lista. |
-| **Pasta de salvamento** | texto | Pasta dentro de Downloads onde tudo é salvo. Veja [Pasta de salvamento](#pasta-de-salvamento). |
+| **Subpasta de salvamento** | texto | Subpasta criada dentro da pasta escolhida (ou de Downloads). Veja [Pasta de salvamento](#pasta-de-salvamento). |
 | **Formato** | TXT, HTML, CSV, JSON | Tipo do arquivo gerado. Veja [Formatos de saída](#formatos-de-saída). A extensão lembra a última escolha. |
 | **Carregar todo o histórico** | ligado / desligado | **Ligado:** rola a conversa até o início, carregando as mensagens antigas. **Desligado:** exporta só o que já está carregado na tela. |
 | **Ritmo de carregamento** | Normal (2 s) / Cauteloso (3 s) | Tempo de espera entre uma rolagem e a próxima. A cada 50 rolagens há uma pausa de 15 s. A extensão lembra a escolha. |
@@ -337,7 +342,7 @@ Para integrar com outros sistemas, rodar análises em Python ou JavaScript ou im
 |---|---|
 | Acesso a `https://web.whatsapp.com/*` | Ler a conversa aberta para gerar o arquivo. Nenhum outro site é acessado. |
 | `scripting` | Ativar a extensão numa aba do WhatsApp Web que já estava aberta antes da instalação, sem precisar recarregar. |
-| `downloads` | Salvar os arquivos direto na pasta de salvamento, sem a janela "Salvar como". |
+| `downloads` | Salvar em Downloads, quando você escolhe essa opção em vez de uma pasta do computador. |
 
 A política de privacidade completa está em [`docs/privacy-policy.html`](docs/privacy-policy.html).
 
@@ -529,7 +534,7 @@ As lojas exigem uma versão maior a cada envio.
 - [ ] Exportar para **PDF** direto
 - [ ] Baixar as **mídias** (fotos, áudios, documentos) num `.zip` junto com a conversa
 - [x] Exportar **todas as conversas** em sequência, com uma pasta por número (v1.1.0)
-- [x] Salvar direto no disco, numa pasta definida antes de exportar (v1.2.0)
+- [x] Salvar direto no disco, numa pasta definida antes de exportar (v1.2.0), em segundo plano em qualquer pasta (v1.3.0)
 - [ ] Incluir **conversas arquivadas** na exportação de todas
 - [ ] Filtro por **intervalo de datas** (de / até)
 - [ ] Datas em **formato ISO** (`AAAA-MM-DD`) como opção

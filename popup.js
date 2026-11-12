@@ -99,7 +99,7 @@ $('go').addEventListener('click', async () => {
     since: $('since').value || null,
     delay: Number($('speed').value),
     maxMessages: parseInt($('maxMessages').value, 10) || 0,
-    folder: $('folder').value.trim() || 'Quantopus Exporter',
+    folder: $('folder').value.trim(),
   };
   save('folder', $('folder').value.trim());
   if (all) {
@@ -119,8 +119,8 @@ $('go').addEventListener('click', async () => {
     }
     show(
       all
-        ? `Exportação iniciada! As conversas serão abertas uma a uma e salvas em Downloads/${opts.folder}. Não use o WhatsApp nessa aba até terminar.`
-        : `Exportação iniciada! Acompanhe o progresso no canto da tela do WhatsApp. O arquivo será salvo em Downloads/${opts.folder}.`,
+        ? 'Exportação iniciada! Se for a primeira vez, escolha a pasta no painel do WhatsApp (canto inferior direito). Depois as conversas são abertas e salvas uma a uma; não use o WhatsApp nessa aba até terminar.'
+        : 'Exportação iniciada! Se for a primeira vez, escolha a pasta no painel do WhatsApp (canto inferior direito). O arquivo é salvo em segundo plano.',
       'ok'
     );
   } catch (e) {

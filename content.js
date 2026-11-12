@@ -366,8 +366,9 @@ ${parts.join('\n')}
       el.innerHTML =
         '<div class="wa-exp-title"></div>' +
         '<div class="wa-exp-status"></div>' +
-        '<button type="button"></button>';
-      el.querySelector('button').addEventListener('click', () => {
+        '<div class="wa-exp-choose" hidden></div>' +
+        '<button type="button" class="wa-exp-cancel"></button>';
+      el.querySelector('.wa-exp-cancel').addEventListener('click', () => {
         job.cancel = true;
       });
       document.body.appendChild(el);
@@ -375,7 +376,8 @@ ${parts.join('\n')}
     el.className = '';
     el.querySelector('.wa-exp-title').textContent = title;
     el.querySelector('.wa-exp-status').textContent = '';
-    el.querySelector('button').textContent = cancelLabel;
+    el.querySelector('.wa-exp-choose').hidden = true;
+    el.querySelector('.wa-exp-cancel').textContent = cancelLabel;
     return el;
   }
 
@@ -511,18 +513,129 @@ ${parts.join('\n')}
   const safeSeg = (s) => safeName(String(s)).replace(/^[.\s]+|[.\s]+$/g, '').slice(0, 100) || '_';
   const safePath = (p) => String(p || '').split(/[\\/]+/).filter(Boolean).map(safeSeg).join('/');
 
-  // Salva direto na pasta escolhida (dentro de Downloads) via service worker
-  // (chrome.downloads). Se não for possível, cai no download comum do navegador.
-  async function saveFile(path, content, mime) {
+  const joinPath = (...parts) => parts.filter(Boolean).join('/');
+  const subfolder = (opts) => safePath(opts.folder ?? DEFAULT_FOLDER);
+
+  // ----- Pasta do computador (File System Access API) -----
+  // O usuário escolhe a pasta uma vez; a permissão fica guardada (IndexedDB) e os
+  // arquivos são gravados em segundo plano, sem janela "Salvar como".
+
+  const IDB_NAME = 'quantopus-exporter';
+  const IDB_STORE = 'handles';
+
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbGet(key) {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbSet(key, value) {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  // Pergunta no painel da página onde salvar (o clique no painel é o gesto do usuário
+  // que o navegador exige). Retorna { dir } (pasta do computador) ou { dir: null } (Downloads).
+  async function chooseDestination(ov) {
+    let saved = null;
+    try { saved = await idbGet('dir'); } catch {}
+    if (saved) {
+      try { if ((await saved.queryPermission({ mode: 'readwrite' })) === 'granted') return { dir: saved }; } catch {}
+    }
+    if (typeof window.showDirectoryPicker !== 'function') return { dir: null };
+
+    const status = ov.querySelector('.wa-exp-status');
+    const box = ov.querySelector('.wa-exp-choose');
+    status.textContent = saved
+      ? `Autorize a gravação na pasta "${saved.name}" (é pedido uma vez por sessão do navegador).`
+      : 'Onde salvar as conversas? Escolha a pasta uma vez; depois tudo é gravado em segundo plano.';
+    box.replaceChildren();
+    box.hidden = false;
+
+    return new Promise((resolve) => {
+      const add = (label, primary, action) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        if (primary) b.className = 'primary';
+        b.addEventListener('click', async () => {
+          try {
+            const result = await action();
+            if (result) { box.hidden = true; resolve(result); }
+          } catch (err) {
+            if (err?.name !== 'AbortError') status.textContent = 'Não foi possível usar essa pasta: ' + (err?.message || err);
+          }
+        });
+        box.appendChild(b);
+      };
+      if (saved) {
+        add(`Usar a pasta "${saved.name}"`, true, async () =>
+          (await saved.requestPermission({ mode: 'readwrite' })) === 'granted' ? { dir: saved } : null);
+      }
+      add(saved ? 'Escolher outra pasta…' : 'Escolher pasta…', !saved, async () => {
+        const dir = await window.showDirectoryPicker({ id: 'quantopus-exporter', mode: 'readwrite' });
+        try { await idbSet('dir', dir); } catch {}
+        return { dir };
+      });
+      add('Usar a pasta Downloads', false, async () => ({ dir: null }));
+    });
+  }
+
+  async function writeToDir(root, path, content) {
+    const parts = path.split('/');
+    const fileName = parts.pop();
+    let dir = root;
+    for (const p of parts) dir = await dir.getDirectoryHandle(p, { create: true });
+    // Não sobrescreve: "arquivo.txt" → "arquivo (2).txt" se já existir.
+    let name = fileName;
+    for (let i = 2; ; i++) {
+      try { await dir.getFileHandle(name); } catch { break; }
+      name = fileName.replace(/(\.\w+)?$/, (ext) => ` (${i})${ext}`);
+    }
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(content);
+    await w.close();
+    return joinPath(...parts, name);
+  }
+
+  // Salva o arquivo: na pasta escolhida do computador, se houver; senão em Downloads
+  // via service worker (chrome.downloads); em último caso, download comum.
+  async function saveFile(dest, path, content, mime) {
+    if (dest?.dir) {
+      try {
+        const written = await writeToDir(dest.dir, path, content);
+        return { ok: true, where: `${dest.dir.name}/${written}` };
+      } catch (err) {
+        dest.error = err?.message || String(err); // segue para Downloads
+      }
+    }
     try {
       const res = await chrome.runtime.sendMessage({ cmd: 'save', filename: path, content, mime });
-      if (res?.ok) return { ok: true };
+      if (res?.ok) return { ok: true, where: `Downloads/${path}` };
       throw new Error(res?.error || 'falha ao salvar');
     } catch (err) {
       download(path.split('/').pop(), content, mime);
-      return { ok: false, error: err?.message || String(err) };
+      return { ok: false, where: 'Downloads', error: err?.message || String(err) };
     }
   }
+
+  const destLabel = (dest, base) => (dest?.dir ? joinPath(dest.dir.name, base) : joinPath('Downloads', base));
 
   // ---------- Coleta de uma conversa ----------
 
@@ -622,15 +735,16 @@ ${parts.join('\n')}
     const ov = overlay('Exportando conversa', 'Parar e exportar o que já carregou');
     const status = ov.querySelector('.wa-exp-status');
     try {
+      const dest = await chooseDestination(ov);
       const info = await collectChat(opts, (t) => (status.textContent = t));
       if (!info.msgs.length) throw new Error('Nenhuma mensagem encontrada.');
       const format = opts.format || 'txt';
       const file = buildFile(info, format);
-      const path = `${safePath(opts.folder || DEFAULT_FOLDER)}/${folderName(info)}/${file.name}`;
+      const path = joinPath(subfolder(opts), folderName(info), file.name);
       status.textContent = 'Salvando…';
-      const saved = await saveFile(path, file.content, file.mime);
+      const saved = await saveFile(dest, path, file.content, file.mime);
       finish(ov, 'Pronto!', `${info.msgs.length} mensagens exportadas em ${format.toUpperCase()}.\n` +
-        (saved.ok ? `Salvo em Downloads/${path}` : `Salvo na pasta padrão de downloads (${saved.error}).`), false, 10000);
+        (saved.ok ? `Salvo em ${saved.where}` : `Salvo na pasta padrão de downloads (${saved.error}).`), false, 10000);
     } catch (err) {
       finish(ov, 'Erro na exportação', err?.message || String(err), true);
     } finally {
@@ -640,6 +754,7 @@ ${parts.join('\n')}
 
   function finish(ov, title, text, isError = false, keepMs = 6000) {
     ov.className = isError ? 'done error' : 'done';
+    ov.querySelector('.wa-exp-choose').hidden = true;
     ov.querySelector('.wa-exp-title').textContent = title;
     ov.querySelector('.wa-exp-status').textContent = text;
     setTimeout(() => {
@@ -767,7 +882,8 @@ ${parts.join('\n')}
     const status = ov.querySelector('.wa-exp-status');
     const format = opts.format || 'txt';
     const maxChats = Math.max(0, Number(opts.maxChats) || 0);
-    const base = safePath(opts.folder || DEFAULT_FOLDER);
+    const base = subfolder(opts);
+    let dest = { dir: null };
     const index = [];
     const seen = new Set();
     let exported = 0;
@@ -776,6 +892,7 @@ ${parts.join('\n')}
     let abortReason = '';
 
     try {
+      dest = await chooseDestination(ov);
       const sc = paneScroller();
       if (!sc) throw new Error('Não encontrei a lista de conversas.');
       sc.scrollTop = 0;
@@ -828,14 +945,14 @@ ${parts.join('\n')}
           } else {
             // Salva já, direto no disco: <pasta>/<número>/<arquivo>.
             const file = buildFile(info, format);
-            const path = `${base}/${folderName(info)}/${file.name}`;
+            const path = joinPath(base, folderName(info), file.name);
             report('Salvando…');
-            const saved = await saveFile(path, file.content, file.mime);
+            const saved = await saveFile(dest, path, file.content, file.mime);
             if (!saved.ok) saveFails++;
             exported++;
             index.push({
               chat: info.chat, number: info.number, isGroup: info.isGroup, count: info.msgs.length,
-              file: saved.ok ? path : file.name,
+              file: saved.ok ? saved.where : file.name,
               status: (info.partial ? 'parcial' : 'ok') + (saved.ok ? '' : ' (salvo na pasta padrão de downloads)'),
             });
           }
@@ -861,10 +978,10 @@ ${parts.join('\n')}
           .concat(index.map((r) => [r.chat, r.number, r.isGroup ? 'sim' : 'nao', r.count ?? '', r.file ?? '', r.status].map(esc).join(';')))
           .join('\r\n');
       const stamp = new Date().toLocaleString('sv-SE').replace(/:/g, '-').slice(0, 16);
-      await saveFile(`${base}/indice ${stamp}.csv`, indexCsv, 'text/csv;charset=utf-8');
+      await saveFile(dest, joinPath(base, `indice ${stamp}.csv`), indexCsv, 'text/csv;charset=utf-8');
 
       const skipped = index.length - exported;
-      const summary = `${exported} conversa(s) salva(s) em Downloads/${base}` +
+      const summary = `${exported} conversa(s) salva(s) em ${destLabel(dest, base)}` +
         (skipped ? `\n${skipped} pulada(s) ou com erro (veja o índice).` : '') +
         (saveFails ? `\n${saveFails} foram para a pasta padrão de downloads.` : '');
       if (!exported && !abortReason) throw new Error('Nenhuma conversa foi exportada (veja o índice).');
