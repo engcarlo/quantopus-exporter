@@ -62,6 +62,7 @@ async function send(msg) {
 async function init() {
   if (load('format')) $('format').value = load('format');
   if (load('speed')) $('speed').value = load('speed');
+  $('folder').value = load('folder') ?? 'Quantopus Exporter';
   if (load('mode') === 'all') document.querySelector('input[name="mode"][value="all"]').checked = true;
   for (const r of document.querySelectorAll('input[name="mode"]')) {
     r.addEventListener('change', () => { save('mode', mode()); refresh(); });
@@ -98,7 +99,9 @@ $('go').addEventListener('click', async () => {
     since: $('since').value || null,
     delay: Number($('speed').value),
     maxMessages: parseInt($('maxMessages').value, 10) || 0,
+    folder: $('folder').value.trim() || 'Quantopus Exporter',
   };
+  save('folder', $('folder').value.trim());
   if (all) {
     opts.skipUnread = $('skipUnread').checked;
     opts.includeGroups = $('includeGroups').checked;
@@ -116,8 +119,8 @@ $('go').addEventListener('click', async () => {
     }
     show(
       all
-        ? 'Exportação iniciada! As conversas serão abertas uma a uma. Não use o WhatsApp nessa aba até terminar; o .zip será baixado no final.'
-        : 'Exportação iniciada! Acompanhe o progresso no canto da tela do WhatsApp. O arquivo será baixado automaticamente.',
+        ? `Exportação iniciada! As conversas serão abertas uma a uma e salvas em Downloads/${opts.folder}. Não use o WhatsApp nessa aba até terminar.`
+        : `Exportação iniciada! Acompanhe o progresso no canto da tela do WhatsApp. O arquivo será salvo em Downloads/${opts.folder}.`,
       'ok'
     );
   } catch (e) {

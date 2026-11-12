@@ -32,7 +32,8 @@ FORMATOS
 • JSON — dados estruturados para quem quer analisar ou integrar com outros sistemas.
 
 RECURSOS
-• Exporta todas as conversas de uma vez: um único .zip, com uma pasta por conversa nomeada pelo número do contato.
+• Exporta todas as conversas de uma vez, salvando cada uma na hora numa pasta nomeada pelo número do contato.
+• Você escolhe a pasta de salvamento antes de começar; os arquivos vão direto para o disco.
 • O número do contato aparece no nome dos arquivos.
 • Carrega o histórico completo da conversa, ou só a partir de uma data.
 • Limite opcional de número de mensagens.
@@ -73,6 +74,9 @@ Sugestões de capturas (sem dados reais de pacientes/clientes — use uma conver
 
 ### Finalidade única
 Exportar a conversa aberta no WhatsApp Web para um arquivo local (TXT, HTML, CSV ou JSON) no computador do usuário.
+
+### Justificativa da permissão `downloads`
+Usada para salvar os arquivos exportados direto na pasta escolhida pelo usuário (dentro da pasta de Downloads), organizados em subpastas pelo número do contato, sem abrir a janela "Salvar como" para cada conversa.
 
 ### Justificativa da permissão `scripting`
 Usada apenas para injetar o script de leitura na aba do WhatsApp Web quando ela já estava aberta antes da instalação da extensão, evitando que o usuário precise recarregar a página.

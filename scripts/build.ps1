@@ -9,7 +9,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $manifest = Get-Content (Join-Path $root 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $version = $manifest.version
 
-$files = @('manifest.json', 'content.js', 'content.css', 'popup.html', 'popup.js',
+$files = @('manifest.json', 'background.js', 'content.js', 'content.css', 'popup.html', 'popup.js',
            'icons/16.png', 'icons/48.png', 'icons/128.png')
 foreach ($f in $files) {
     if (-not (Test-Path (Join-Path $root $f))) {

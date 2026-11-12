@@ -76,11 +76,31 @@
     return 'texto';
   }
 
+  // Quem enviou a mensagem. O data-id antigo começava com "true_"/"false_"; nas versões
+  // atuais é só um código, então usamos as marcas da bolha: "rabicho" de saída/entrada,
+  // status de entrega (só mensagens enviadas têm) e, por fim, o alinhamento à direita.
+  const STATUS_RE = /^\s*(entregue|lida|enviada|pendente|delivered|read|sent|pending|entregado|leído|enviado|pendiente)\s*$/i;
+  function isFromMe(row, id) {
+    if (id.startsWith('true_')) return true;
+    if (id.startsWith('false_')) return false;
+    if (row.querySelector('[data-testid="tail-out"], [data-icon="tail-out"], .message-out')) return true;
+    if (row.querySelector('[data-testid="tail-in"], [data-icon="tail-in"], .message-in')) return false;
+    if ([...row.querySelectorAll('[aria-label]')].some((e) => STATUS_RE.test(e.getAttribute('aria-label')))) return true;
+    const main = $main();
+    const bubble = row.querySelector('[data-pre-plain-text]') || row.querySelector('[data-testid="msg-container"]');
+    if (main && bubble) {
+      const m = main.getBoundingClientRect();
+      const b = bubble.getBoundingClientRect();
+      if (b.width) return m.right - b.right < b.left - m.left;
+    }
+    return false;
+  }
+
   function parseRow(row) {
     const id = row.getAttribute('data-id') || '';
     const msg = {
       id,
-      fromMe: id.startsWith('true_'),
+      fromMe: isFromMe(row, id),
       date: '',
       time: '',
       sender: '',
@@ -184,7 +204,7 @@
   }
 
   // Preenche data/remetente que o WhatsApp não expõe em mídias e stickers.
-  function fillGaps(msgs, chatName) {
+  function fillGaps(msgs, chatName, isGroup = false) {
     const myName = msgs.find((m) => m.fromMe && m.sender)?.sender || 'Você';
     let lastDate = '';
     let prev = null;
@@ -193,7 +213,7 @@
       else m.date = lastDate;
       if (!m.sender && m.type !== 'sistema') {
         if (m.fromMe) m.sender = myName;
-        else if (m.id.includes('@g.us')) m.sender = prev && !prev.fromMe && prev.sender ? prev.sender : '?';
+        else if (isGroup || m.id.includes('@g.us')) m.sender = prev && !prev.fromMe && prev.sender ? prev.sender : '?';
         else m.sender = chatName;
       }
       prev = m;
@@ -402,15 +422,14 @@ ${parts.join('\n')}
     if (info.isGroup) parts.push('Grupo');
     else if (info.number && info.number !== '+' + info.chat.replace(/\D/g, '')) parts.push(info.number);
     parts.push(info.chat);
-    return safeName(parts.join(' - ')).slice(0, 110);
+    return safeSeg(parts.join(' - '));
   }
 
-  // Pasta de cada conversa dentro do .zip: o número; grupos e contatos sem número
-  // visível (ID oculto do WhatsApp) usam o nome.
+  // Pasta de cada conversa: o número; grupos e contatos sem número visível usam o nome.
   function folderName(info) {
-    if (info.isGroup) return safeName(`Grupo - ${info.chat}`).slice(0, 80);
+    if (info.isGroup) return safeSeg(`Grupo - ${info.chat}`);
     if (info.number) return info.number;
-    return safeName(`Sem número - ${info.chat}`).slice(0, 80);
+    return safeSeg(`Sem número - ${info.chat}`);
   }
 
   const FORMATS = {
@@ -420,14 +439,105 @@ ${parts.join('\n')}
     json: { mime: 'application/json;charset=utf-8', build: (msgs, meta) => toJSON(msgs, meta) },
   };
 
+  // ---------- Painel "Dados do contato" (número e grupo) ----------
+
+  // O data-id das mensagens atuais não traz mais o número. Ele aparece no painel de
+  // dados do contato, que abrimos e fechamos em seguida (sem efeito na conversa).
+  const PHONE_RE = /\+\d{1,3}[\d\s().\-]{7,18}\d/;
+  const GROUP_RE = /\b(grupo|group)\s*·|\b\d+\s+(membros|members|participantes|participants|miembros)\b/i;
+  const CLOSE_RE = /^(fechar|close|cerrar)$/i;
+
+  // Texto do painel lateral direito (tudo que está à direita da área de mensagens).
+  function drawerTexts(mainRight) {
+    const main = $main();
+    const out = [];
+    for (const el of document.querySelectorAll('span, div, h1, h2')) {
+      if (el.children.length > 2 || main?.contains(el) || el.closest('#wa-exp-overlay')) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || r.left < mainRight - 5) continue;
+      const t = clean(el.textContent);
+      if (t && t.length < 120) out.push(t);
+    }
+    return out;
+  }
+
+  function closeDrawer(mainRight) {
+    const btn = [...document.querySelectorAll('[aria-label]')].find(
+      (e) => CLOSE_RE.test((e.getAttribute('aria-label') || '').trim()) && e.getBoundingClientRect().left >= mainRight - 5
+    );
+    if (btn) realClick(btn);
+    else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+  }
+
+  async function readContactInfo() {
+    const main = $main();
+    const btn =
+      main?.querySelector('header [data-testid="conversation-info-header-button"]') ||
+      main?.querySelector('header [role="button"]');
+    if (!main || !btn) return { number: '', isGroup: false };
+    const label = btn.getAttribute('aria-label') || '';
+    let isGroup = /grupo|group/i.test(label);
+    let number = '';
+    const mainRight = main.getBoundingClientRect().right;
+
+    realClick(btn);
+    const t0 = Date.now();
+    let opened = false;
+    while (Date.now() - t0 < 6000) {
+      await sleep(400);
+      const right = $main()?.getBoundingClientRect().right ?? mainRight;
+      if (right >= mainRight - 5) continue; // painel ainda não abriu
+      const texts = drawerTexts(right);
+      if (!texts.length) continue;
+      opened = true;
+      // Grupo primeiro: a lista de membros de um grupo também tem números.
+      if (texts.some((t) => GROUP_RE.test(t))) { isGroup = true; break; }
+      const hit = texts.find((t) => PHONE_RE.test(t));
+      if (hit) { number = '+' + hit.match(PHONE_RE)[0].replace(/\D/g, ''); break; }
+    }
+    const rightNow = $main()?.getBoundingClientRect().right ?? mainRight;
+    if (opened || rightNow < mainRight - 5) {
+      closeDrawer(rightNow);
+      for (let i = 0; i < 10 && ($main()?.getBoundingClientRect().right ?? mainRight) < mainRight - 5; i++) await sleep(200);
+    }
+    return { number: isGroup ? '' : number, isGroup };
+  }
+
+  // ---------- Salvar no disco ----------
+
+  const DEFAULT_FOLDER = 'Quantopus Exporter';
+
+  // Cada segmento de caminho precisa ser um nome válido de pasta/arquivo no Windows.
+  const safeSeg = (s) => safeName(String(s)).replace(/^[.\s]+|[.\s]+$/g, '').slice(0, 100) || '_';
+  const safePath = (p) => String(p || '').split(/[\\/]+/).filter(Boolean).map(safeSeg).join('/');
+
+  // Salva direto na pasta escolhida (dentro de Downloads) via service worker
+  // (chrome.downloads). Se não for possível, cai no download comum do navegador.
+  async function saveFile(path, content, mime) {
+    try {
+      const res = await chrome.runtime.sendMessage({ cmd: 'save', filename: path, content, mime });
+      if (res?.ok) return { ok: true };
+      throw new Error(res?.error || 'falha ao salvar');
+    } catch (err) {
+      download(path.split('/').pop(), content, mime);
+      return { ok: false, error: err?.message || String(err) };
+    }
+  }
+
   // ---------- Coleta de uma conversa ----------
 
   // Lê a conversa aberta (rolando o histórico conforme as opções) e devolve as mensagens.
-  async function collectChat(opts, report) {
+  async function collectChat(opts, report, contactInfo = null) {
     const chat = getChatName();
     const since = opts.since ? new Date(opts.since + 'T00:00:00') : null;
     const store = new Map();
     const order = [];
+
+    let contact = contactInfo;
+    if (!contact) {
+      report('Lendo número do contato…');
+      contact = await readContactInfo();
+    }
 
     report('Lendo mensagens visíveis…');
     merge(parseVisible(), store, order);
@@ -475,8 +585,13 @@ ${parts.join('\n')}
       partial = job.cancel;
     }
 
-    let msgs = fillGaps(order.map((id) => store.get(id)), chat);
-    const identity = chatIdentity(msgs, chat);
+    let msgs = order.map((id) => store.get(id));
+    const fallback = chatIdentity(msgs, chat);
+    const identity = {
+      isGroup: contact.isGroup || fallback.isGroup,
+      number: contact.isGroup || fallback.isGroup ? '' : contact.number || fallback.number,
+    };
+    msgs = fillGaps(msgs, chat, identity.isGroup);
     if (since) {
       msgs = msgs.filter((m) => {
         const d = parseDate(m.date);
@@ -511,8 +626,11 @@ ${parts.join('\n')}
       if (!info.msgs.length) throw new Error('Nenhuma mensagem encontrada.');
       const format = opts.format || 'txt';
       const file = buildFile(info, format);
-      download(file.name, file.content, file.mime);
-      finish(ov, 'Pronto!', `${info.msgs.length} mensagens exportadas em ${format.toUpperCase()}.`);
+      const path = `${safePath(opts.folder || DEFAULT_FOLDER)}/${folderName(info)}/${file.name}`;
+      status.textContent = 'Salvando…';
+      const saved = await saveFile(path, file.content, file.mime);
+      finish(ov, 'Pronto!', `${info.msgs.length} mensagens exportadas em ${format.toUpperCase()}.\n` +
+        (saved.ok ? `Salvo em Downloads/${path}` : `Salvo na pasta padrão de downloads (${saved.error}).`), false, 10000);
     } catch (err) {
       finish(ov, 'Erro na exportação', err?.message || String(err), true);
     } finally {
@@ -649,20 +767,13 @@ ${parts.join('\n')}
     const status = ov.querySelector('.wa-exp-status');
     const format = opts.format || 'txt';
     const maxChats = Math.max(0, Number(opts.maxChats) || 0);
-    const files = [];
+    const base = safePath(opts.folder || DEFAULT_FOLDER);
     const index = [];
     const seen = new Set();
-    const usedNames = new Set();
     let exported = 0;
+    let saveFails = 0;
     let openFails = 0;
     let abortReason = '';
-
-    const uniqueName = (name) => {
-      let n = name;
-      for (let i = 2; usedNames.has(n.toLowerCase()); i++) n = name.replace(/(\.\w+)$/, ` (${i})$1`);
-      usedNames.add(n.toLowerCase());
-      return n;
-    };
 
     try {
       const sc = paneScroller();
@@ -703,24 +814,29 @@ ${parts.join('\n')}
         }
         openFails = 0;
 
-        const quick = chatIdentity(parseVisible(), next.title);
-        if (quick.isGroup && !opts.includeGroups) {
+        report('Lendo número do contato…');
+        const contact = await readContactInfo();
+        if (contact.isGroup && !opts.includeGroups) {
           index.push({ chat: next.title, isGroup: true, status: 'pulada: grupo' });
           continue;
         }
 
         try {
-          const info = await collectChat(opts, report);
+          const info = await collectChat(opts, report, contact);
           if (!info.msgs.length) {
             index.push({ chat: info.chat, number: info.number, isGroup: info.isGroup, status: 'sem mensagens' });
           } else {
+            // Salva já, direto no disco: <pasta>/<número>/<arquivo>.
             const file = buildFile(info, format);
-            file.name = uniqueName(`${folderName(info)}/${file.name}`);
-            files.push(file);
+            const path = `${base}/${folderName(info)}/${file.name}`;
+            report('Salvando…');
+            const saved = await saveFile(path, file.content, file.mime);
+            if (!saved.ok) saveFails++;
             exported++;
             index.push({
-              chat: info.chat, number: info.number, isGroup: info.isGroup,
-              count: info.msgs.length, file: file.name, status: info.partial ? 'parcial' : 'ok',
+              chat: info.chat, number: info.number, isGroup: info.isGroup, count: info.msgs.length,
+              file: saved.ok ? path : file.name,
+              status: (info.partial ? 'parcial' : 'ok') + (saved.ok ? '' : ' (salvo na pasta padrão de downloads)'),
             });
           }
         } catch (err) {
@@ -734,21 +850,24 @@ ${parts.join('\n')}
         }
       }
 
-      if (!files.length) throw new Error(abortReason || 'Nenhuma conversa foi exportada.');
+      if (!index.length) throw new Error(abortReason || 'Nenhuma conversa encontrada na lista.');
 
-      status.textContent = 'Montando o arquivo .zip…';
+      // Índice da execução: todas as conversas encontradas e o que aconteceu com cada uma.
+      status.textContent = 'Salvando o índice…';
       const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const indexCsv =
         '\uFEFF' +
         [['conversa', 'numero', 'grupo', 'mensagens', 'arquivo', 'status'].join(';')]
           .concat(index.map((r) => [r.chat, r.number, r.isGroup ? 'sim' : 'nao', r.count ?? '', r.file ?? '', r.status].map(esc).join(';')))
           .join('\r\n');
-      const zip = makeZip([...files.map((f) => ({ name: f.name, data: f.content })), { name: 'indice.csv', data: indexCsv }]);
-      download(`Quantopus - conversas do WhatsApp - ${today()}.zip`, zip, 'application/zip');
+      const stamp = new Date().toLocaleString('sv-SE').replace(/:/g, '-').slice(0, 16);
+      await saveFile(`${base}/indice ${stamp}.csv`, indexCsv, 'text/csv;charset=utf-8');
 
       const skipped = index.length - exported;
-      const summary = `${exported} conversa(s) exportada(s) em ${format.toUpperCase()}` +
-        (skipped ? `, ${skipped} pulada(s) ou com erro (veja indice.csv).` : '.');
+      const summary = `${exported} conversa(s) salva(s) em Downloads/${base}` +
+        (skipped ? `\n${skipped} pulada(s) ou com erro (veja o índice).` : '') +
+        (saveFails ? `\n${saveFails} foram para a pasta padrão de downloads.` : '');
+      if (!exported && !abortReason) throw new Error('Nenhuma conversa foi exportada (veja o índice).');
       if (abortReason) finish(ov, 'Exportação interrompida', `${abortReason}\n\n${summary}`, true, 30000);
       else finish(ov, 'Pronto!', summary, false, 15000);
     } catch (err) {
@@ -756,79 +875,6 @@ ${parts.join('\n')}
     } finally {
       job.running = false;
     }
-  }
-
-  // ---------- ZIP (sem compressão, sem dependências) ----------
-
-  const CRC_TABLE = (() => {
-    const t = new Uint32Array(256);
-    for (let n = 0; n < 256; n++) {
-      let c = n;
-      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-      t[n] = c >>> 0;
-    }
-    return t;
-  })();
-
-  function crc32(bytes) {
-    let c = 0xffffffff;
-    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-  }
-
-  function makeZip(entries) {
-    const enc = new TextEncoder();
-    const d = new Date();
-    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
-    const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
-    const chunks = [];
-    const central = [];
-    let offset = 0;
-
-    for (const e of entries) {
-      const name = enc.encode(e.name);
-      const data = typeof e.data === 'string' ? enc.encode(e.data) : e.data;
-      const crc = crc32(data);
-
-      const local = new DataView(new ArrayBuffer(30));
-      local.setUint32(0, 0x04034b50, true);
-      local.setUint16(4, 20, true);
-      local.setUint16(6, 0x0800, true); // nomes em UTF-8
-      local.setUint16(8, 0, true); // sem compressão
-      local.setUint16(10, time, true);
-      local.setUint16(12, date, true);
-      local.setUint32(14, crc, true);
-      local.setUint32(18, data.length, true);
-      local.setUint32(22, data.length, true);
-      local.setUint16(26, name.length, true);
-      chunks.push(new Uint8Array(local.buffer), name, data);
-
-      const cd = new DataView(new ArrayBuffer(46));
-      cd.setUint32(0, 0x02014b50, true);
-      cd.setUint16(4, 20, true);
-      cd.setUint16(6, 20, true);
-      cd.setUint16(8, 0x0800, true);
-      cd.setUint16(10, 0, true);
-      cd.setUint16(12, time, true);
-      cd.setUint16(14, date, true);
-      cd.setUint32(16, crc, true);
-      cd.setUint32(20, data.length, true);
-      cd.setUint32(24, data.length, true);
-      cd.setUint16(28, name.length, true);
-      cd.setUint32(42, offset, true);
-      central.push(new Uint8Array(cd.buffer), name);
-
-      offset += 30 + name.length + data.length;
-    }
-
-    const cdSize = central.reduce((s, a) => s + a.length, 0);
-    const end = new DataView(new ArrayBuffer(22));
-    end.setUint32(0, 0x06054b50, true);
-    end.setUint16(8, entries.length, true);
-    end.setUint16(10, entries.length, true);
-    end.setUint32(12, cdSize, true);
-    end.setUint32(16, offset, true);
-    return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
   }
 
   // ---------- Mensagens do popup ----------
