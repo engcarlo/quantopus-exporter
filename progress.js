@@ -93,13 +93,15 @@ async function writeToDir(root, path, content) {
 }
 
 // Confere, de verdade, que dá para gravar na pasta: cria e apaga um arquivo de teste.
+// O nome precisa ser "comum" (sem ponto no início): em pastas reais do Windows o Chrome
+// recusa alguns nomes que a pasta interna de testes aceita.
 async function probeWrite(handle) {
-  const probe = '.quantopus-teste';
+  const probe = 'quantopus-teste-de-gravacao.txt';
   const fh = await handle.getFileHandle(probe, { create: true });
   const w = await fh.createWritable();
   await w.write('ok');
   await w.close();
-  await handle.removeEntry(probe);
+  try { await handle.removeEntry(probe); } catch (err) { log('Aviso: não consegui apagar o arquivo de teste — ' + errText(err)); }
 }
 
 // ---------- Etapa 1: pasta de destino ----------
@@ -126,26 +128,49 @@ function showChosen(handle) {
   $('startBtn').disabled = !handle;
 }
 
+// Botão "Autorizar gravação": dá ao Chrome o clique que ele exige para conceder a permissão.
+function askAuthorize(handle) {
+  const btn = $('authorize');
+  btn.textContent = `Autorizar gravação em "${handle.name}"`;
+  btn.hidden = false;
+  btn.onclick = () => confirmFolder(handle, { request: true });
+  $('chosenName').textContent = `${handle.name} (falta autorizar)`;
+  $('chosenHint').textContent = 'Clique em "Autorizar gravação" e escolha "Permitir" / "Editar arquivos".';
+  destMsg('O Chrome ainda não autorizou gravar nessa pasta. Clique no botão verde acima para autorizar.', 'info');
+}
+function hideAuthorize() {
+  $('authorize').hidden = true;
+  $('authorize').onclick = null;
+}
+
 // Confirma a pasta: permissão de escrita + gravação de teste. Só então libera "Iniciar".
 async function confirmFolder(handle, { request }) {
   log(`Pasta recebida: "${handle.name}"`);
+  let perm = 'prompt';
   try {
-    let perm = await handle.queryPermission({ mode: 'readwrite' });
+    perm = await handle.queryPermission({ mode: 'readwrite' });
     log(`Permissão atual: ${perm}`);
     if (perm !== 'granted' && request) {
       perm = await handle.requestPermission({ mode: 'readwrite' });
       log(`Permissão após pedido: ${perm}`);
     }
-    if (perm !== 'granted') {
-      destMsg('O Chrome não autorizou gravar nessa pasta. Clique de novo e escolha "Permitir" / "Editar arquivos".');
-      return false;
-    }
+  } catch (err) {
+    // Típico logo após o seletor: o Chrome só aceita o pedido de permissão junto de um
+    // clique "novo" do usuário. Mostramos um botão para isso em vez de falhar.
+    log('Pedido de permissão precisa de um novo clique — ' + errText(err));
+  }
+  if (perm !== 'granted') {
+    askAuthorize(handle);
+    return false;
+  }
+  hideAuthorize();
+  try {
     await probeWrite(handle);
     log('Gravação de teste na pasta: OK');
   } catch (err) {
-    log('Falha ao confirmar a pasta — ' + errText(err), true);
-    destMsg('Não foi possível gravar nessa pasta (' + (err?.message || err) + '). Escolha outra pasta.');
-    return false;
+    // A permissão foi dada; a falha está só no arquivo de teste. Aceita a pasta mesmo
+    // assim e registra o motivo: se a gravação real também falhar, o registro mostra.
+    log('Gravação de teste falhou, mas a pasta foi aceita — ' + errText(err), true);
   }
   dir = handle;
   destMsg('');
@@ -177,8 +202,9 @@ async function pickFolder(startIn) {
 }
 
 async function initDest() {
-  $('subtitle').textContent = command === 'exportAll' ? 'Exportar todas as conversas' : 'Exportar a conversa aberta';
-  log(`Janela aberta · aba ${tabId} · ${command} · subpasta "${opts.folder || ''}"`);
+  const version = globalThis.chrome?.runtime?.getManifest?.().version || '?';
+  $('subtitle').textContent = (command === 'exportAll' ? 'Exportar todas as conversas' : 'Exportar a conversa aberta') + ` · v${version}`;
+  log(`Janela aberta · v${version} · aba ${tabId} · ${command} · subpasta "${opts.folder || ''}"`);
   showChosen(null);
 
   if (typeof window.showDirectoryPicker !== 'function') {
