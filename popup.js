@@ -63,6 +63,7 @@ async function init() {
   if (load('format')) $('format').value = load('format');
   if (load('speed')) $('speed').value = load('speed');
   $('folder').value = load('folder') ?? 'Quantopus Exporter';
+  $('separateFiles').checked = load('separateFiles') === '1';
   $('openDlSettings').addEventListener('click', (e) => {
     e.preventDefault();
     chrome.tabs.create({ url: 'chrome://settings/downloads' });
@@ -110,6 +111,8 @@ $('go').addEventListener('click', async () => {
     opts.skipUnread = $('skipUnread').checked;
     opts.includeGroups = $('includeGroups').checked;
     opts.maxChats = parseInt($('maxChats').value, 10) || 0;
+    opts.separateFiles = $('separateFiles').checked;
+    save('separateFiles', opts.separateFiles ? '1' : '');
   }
   save('format', opts.format);
   save('speed', $('speed').value);

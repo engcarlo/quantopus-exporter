@@ -69,7 +69,7 @@ Alguns usos:
 | | Recurso | Detalhe |
 |---|---|---|
 | 📄 | **4 formatos** | TXT, HTML, CSV e JSON |
-| 🐙 | **Todas as conversas de uma vez** | Abre e exporta cada conversa da lista, **salvando cada uma na hora** numa pasta nomeada pelo número |
+| 🐙 | **Todas as conversas de uma vez** | Abre e exporta cada conversa da lista e entrega **um único .zip**, com uma pasta por número (ou, se preferir, arquivos separados) |
 | 📇 | **Número no nome** | Os arquivos levam o número do contato (ex.: `+5511999999999`), além do nome |
 | 📜 | **Histórico completo** | Rola a conversa até o início e carrega as mensagens antigas automaticamente |
 | 📅 | **Filtro por data** | Exporta só as mensagens a partir de um dia escolhido |
@@ -153,16 +153,16 @@ O número do contato é lido no painel **Dados do contato**, que a extensão abr
 2. Ajuste as opções extras:
    - **Pular conversas com mensagens não lidas** (ligado por padrão): abrir uma conversa a marca como lida, então essas ficam de fora;
    - **Incluir grupos**;
-   - **Máximo de conversas** (opcional).
+   - **Máximo de conversas** (opcional);
+   - **Salvar cada conversa como arquivo separado** (desligado por padrão; veja abaixo).
 3. Clique em **Exportar todas**. A extensão vai, de cima para baixo na lista:
    1. abrir a conversa;
    2. exportar com as mesmas opções de formato, histórico, data e limite;
-   3. **salvar o arquivo na hora**, na pasta de salvamento, numa subpasta com o número;
-   4. esperar alguns segundos e seguir para a próxima. A cada 10 conversas, faz uma pausa de 30 s.
-4. No fim, salva também um **índice** da execução. O resultado fica assim:
+   3. esperar alguns segundos e seguir para a próxima. A cada 10 conversas, faz uma pausa de 30 s.
+4. No fim, entrega **um único arquivo** `Downloads/<pasta>/Quantopus - conversas <data> <hora>.zip`. O Chrome pergunta **no máximo uma vez**, ou nenhuma, se "Perguntar onde salvar" estiver desligado. Dentro do .zip:
 
 ```text
-Downloads/Quantopus Exporter/
+Quantopus - conversas 2026-11-12 14-30.zip
 ├── +5511999999999/
 │   └── WhatsApp - +5511999999999 - Ana - 2026-11-12.txt
 ├── +5521988887777/
@@ -174,14 +174,14 @@ Downloads/Quantopus Exporter/
 └── indice 2026-11-12 14-30.csv
 ```
 
-Como cada conversa é gravada assim que termina, nada se perde se o processo for interrompido no meio: o que já foi exportado já está no disco.
+**Arquivos separados (opcional):** com **Salvar cada conversa como arquivo separado** ligado, cada conversa é gravada na hora em `Downloads/<pasta>/<número>/`, e o índice vai ao lado. A vantagem é que nada se perde se o processo for interrompido. Mas o Chrome trata cada arquivo como um download, então, com "Perguntar onde salvar" ligado, ele pergunta **a cada arquivo**. Use essa opção só com ela desligada.
 
 - Cada conversa fica em **sua própria pasta, com o número como nome**.
 - Grupos ficam em `Grupo - <nome>`.
 - Contatos cujo número o WhatsApp não mostra ficam em `Sem número - <nome>`.
 - O **índice** (`indice <data> <hora>.csv`) lista todas as conversas encontradas, com número, se é grupo, quantidade de mensagens, caminho do arquivo e status: `ok`, `parcial`, `pulada: mensagens não lidas`, `pulada: grupo`, `sem mensagens` ou `erro: …`.
 
-> **Parar e salvar o que já exportou:** interrompe o processo. A conversa em andamento é salva como `parcial`, e o índice é gravado.
+> **Parar e salvar o que já exportou:** interrompe o processo e entrega na hora o .zip (ou o índice, no modo de arquivos separados) com o que já foi exportado. A conversa em andamento entra como `parcial`.
 
 > **Dica:** para muitas conversas, desligue **Carregar todo o histórico** (exporta só as mensagens recentes de cada uma) ou use **Somente a partir de** para limitar o período. Com o histórico completo, o processo pode levar horas.
 
@@ -535,6 +535,7 @@ As lojas exigem uma versão maior a cada envio.
 - [x] Exportar **todas as conversas** em sequência, com uma pasta por número (v1.1.0)
 - [x] Salvar direto no disco, numa pasta definida antes de exportar (v1.2.0), em segundo plano em qualquer pasta (v1.3.0)
 - [x] Janela flutuante com barra de progresso (v1.4.0)
+- [x] Entrega em um único .zip, sem uma pergunta por arquivo (v1.7.0)
 - [ ] Incluir **conversas arquivadas** na exportação de todas
 - [ ] Filtro por **intervalo de datas** (de / até)
 - [ ] Datas em **formato ISO** (`AAAA-MM-DD`) como opção

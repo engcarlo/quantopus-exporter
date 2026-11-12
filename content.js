@@ -528,19 +528,21 @@ ${parts.join('\n')}
     try { chrome.runtime.sendMessage({ cmd: 'progress', saved: where }).catch(() => {}); } catch {}
   }
 
-  // Salva o arquivo no destino; se a pasta falhar (ex.: janela fechada), cai para Downloads.
+  // Converte bytes em base64 (para mandar binários, como o .zip, ao service worker).
+  function bytesToBase64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  // Salva em Downloads/<path> via service worker (chrome.downloads). content pode ser
+  // texto ou Blob (binário). Se o service worker falhar, usa o download comum.
   async function saveFile(dest, path, content, mime) {
-    if (dest?.mode === 'dir') {
-      try {
-        const res = await chrome.runtime.sendMessage({ cmd: 'write', path, content });
-        if (res?.ok) return { ok: true, where: res.where };
-        throw new Error(res?.error || 'a janela do Quantopus não respondeu');
-      } catch (err) {
-        dest.error = err?.message || String(err); // segue para Downloads
-      }
-    }
     try {
-      const res = await chrome.runtime.sendMessage({ cmd: 'save', filename: path, content, mime });
+      const msg = { cmd: 'save', filename: path, mime };
+      if (content instanceof Blob) msg.base64 = bytesToBase64(new Uint8Array(await content.arrayBuffer()));
+      else msg.content = content;
+      const res = await chrome.runtime.sendMessage(msg);
       if (res?.ok) return { ok: true, where: `Downloads/${path}` };
       throw new Error(res?.error || 'falha ao salvar');
     } catch (err) {
@@ -825,6 +827,10 @@ ${parts.join('\n')}
     let saveFails = 0;
     let openFails = 0;
     let abortReason = '';
+    // Padrão: um único .zip no fim (o Chrome pergunta no máximo uma vez).
+    // Opcional: cada conversa salva na hora (exige desligar "Perguntar onde salvar").
+    const asZip = !opts.separateFiles;
+    const zipEntries = [];
 
     // Total de conversas da lista (o WhatsApp informa em aria-rowcount).
     const listTotal = () => Number($pane()?.querySelector('[role="grid"]')?.getAttribute('aria-rowcount')) || 0;
@@ -897,19 +903,29 @@ ${parts.join('\n')}
           if (!info.msgs.length) {
             index.push({ chat: info.chat, number: info.number, isGroup: info.isGroup, status: 'sem mensagens' });
           } else {
-            // Salva já, direto no disco: <pasta>/<número>/<arquivo>.
             const file = buildFile(info, format);
-            const path = joinPath(base, folderName(info), file.name);
-            report('Salvando…');
-            const saved = await saveFile(dest, path, file.content, file.mime);
-            if (saved.ok) notifySaved(saved.where);
-            if (!saved.ok) saveFails++;
-            exported++;
-            index.push({
-              chat: info.chat, number: info.number, isGroup: info.isGroup, count: info.msgs.length,
-              file: saved.ok ? saved.where : file.name,
-              status: (info.partial ? 'parcial' : 'ok') + (saved.ok ? '' : ' (salvo na pasta padrão de downloads)'),
-            });
+            const inner = joinPath(folderName(info), file.name); // <número>/<arquivo>
+            if (asZip) {
+              // Guarda para o .zip final (um único download, sem uma janela por arquivo).
+              zipEntries.push({ name: inner, data: file.content });
+              exported++;
+              index.push({
+                chat: info.chat, number: info.number, isGroup: info.isGroup, count: info.msgs.length,
+                file: inner, status: info.partial ? 'parcial' : 'ok',
+              });
+            } else {
+              // Salva já, arquivo por arquivo: Downloads/<pasta>/<número>/<arquivo>.
+              report('Salvando…');
+              const saved = await saveFile(dest, joinPath(base, inner), file.content, file.mime);
+              if (saved.ok) notifySaved(saved.where);
+              else saveFails++;
+              exported++;
+              index.push({
+                chat: info.chat, number: info.number, isGroup: info.isGroup, count: info.msgs.length,
+                file: saved.ok ? saved.where : file.name,
+                status: (info.partial ? 'parcial' : 'ok') + (saved.ok ? '' : ' (salvo na pasta padrão de downloads)'),
+              });
+            }
           }
         } catch (err) {
           index.push({ chat: next.title, status: 'erro: ' + (err?.message || err) });
@@ -925,7 +941,8 @@ ${parts.join('\n')}
       if (!index.length) throw new Error(abortReason || 'Nenhuma conversa encontrada na lista.');
 
       // Índice da execução: todas as conversas encontradas e o que aconteceu com cada uma.
-      status.textContent = 'Salvando o índice…';
+      status.textContent = asZip ? 'Montando o arquivo .zip…' : 'Salvando o índice…';
+      progress({ text: status.textContent, ...counts() });
       const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const indexCsv =
         '\uFEFF' +
@@ -933,10 +950,21 @@ ${parts.join('\n')}
           .concat(index.map((r) => [r.chat, r.number, r.isGroup ? 'sim' : 'nao', r.count ?? '', r.file ?? '', r.status].map(esc).join(';')))
           .join('\r\n');
       const stamp = new Date().toLocaleString('sv-SE').replace(/:/g, '-').slice(0, 16);
-      await saveFile(dest, joinPath(base, `indice ${stamp}.csv`), indexCsv, 'text/csv;charset=utf-8');
+      let savedTo = destLabel(dest, base);
+      if (asZip) {
+        if (zipEntries.length) {
+          const zip = makeZip([...zipEntries, { name: `indice ${stamp}.csv`, data: indexCsv }]);
+          const zipPath = joinPath(base, `Quantopus - conversas ${stamp}.zip`);
+          const saved = await saveFile(dest, zipPath, zip, 'application/zip');
+          if (saved.ok) notifySaved(saved.where);
+          savedTo = saved.ok ? saved.where : 'Downloads';
+        }
+      } else {
+        await saveFile(dest, joinPath(base, `indice ${stamp}.csv`), indexCsv, 'text/csv;charset=utf-8');
+      }
 
       const skipped = index.length - exported;
-      const summary = `${exported} conversa(s) salva(s) em ${destLabel(dest, base)}` +
+      const summary = `${exported} conversa(s) salva(s) em ${savedTo}` +
         (skipped ? `\n${skipped} pulada(s) ou com erro (veja o índice).` : '') +
         (saveFails ? `\n${saveFails} foram para a pasta padrão de downloads.` : '');
       if (!exported && !abortReason) throw new Error('Nenhuma conversa foi exportada (veja o índice).');
@@ -947,6 +975,79 @@ ${parts.join('\n')}
     } finally {
       job.running = false;
     }
+  }
+
+  // ---------- ZIP (sem compressão, sem dependências) ----------
+
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(bytes) {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  function makeZip(entries) {
+    const enc = new TextEncoder();
+    const d = new Date();
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const chunks = [];
+    const central = [];
+    let offset = 0;
+
+    for (const e of entries) {
+      const name = enc.encode(e.name);
+      const data = typeof e.data === 'string' ? enc.encode(e.data) : e.data;
+      const crc = crc32(data);
+
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(6, 0x0800, true); // nomes em UTF-8
+      local.setUint16(8, 0, true); // sem compressão
+      local.setUint16(10, time, true);
+      local.setUint16(12, date, true);
+      local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true);
+      local.setUint16(26, name.length, true);
+      chunks.push(new Uint8Array(local.buffer), name, data);
+
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true);
+      cd.setUint16(4, 20, true);
+      cd.setUint16(6, 20, true);
+      cd.setUint16(8, 0x0800, true);
+      cd.setUint16(10, 0, true);
+      cd.setUint16(12, time, true);
+      cd.setUint16(14, date, true);
+      cd.setUint32(16, crc, true);
+      cd.setUint32(20, data.length, true);
+      cd.setUint32(24, data.length, true);
+      cd.setUint16(28, name.length, true);
+      cd.setUint32(42, offset, true);
+      central.push(new Uint8Array(cd.buffer), name);
+
+      offset += 30 + name.length + data.length;
+    }
+
+    const cdSize = central.reduce((s, a) => s + a.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, entries.length, true);
+    end.setUint16(10, entries.length, true);
+    end.setUint32(12, cdSize, true);
+    end.setUint32(16, offset, true);
+    return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
   }
 
   // ---------- Mensagens do popup ----------

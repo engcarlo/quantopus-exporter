@@ -32,7 +32,7 @@ FORMATOS
 • JSON — dados estruturados para quem quer analisar ou integrar com outros sistemas.
 
 RECURSOS
-• Exporta todas as conversas de uma vez, salvando cada uma na hora numa pasta nomeada pelo número do contato.
+• Exporta todas as conversas de uma vez num único .zip, com uma pasta por número do contato.
 • Você define a pasta de salvamento (dentro de Downloads) antes de começar; cada conversa é salva direto, numa subpasta com o número.
 • O número do contato aparece no nome dos arquivos.
 • Carrega o histórico completo da conversa, ou só a partir de uma data.

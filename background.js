@@ -14,8 +14,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.cmd !== 'save') return;
   (async () => {
     try {
+      const mime = msg.mime || 'text/plain;charset=utf-8';
       const id = await chrome.downloads.download({
-        url: toDataUrl(msg.content, msg.mime || 'text/plain;charset=utf-8'),
+        // Texto chega como string; binários (ex.: .zip) chegam já em base64.
+        url: msg.base64 ? `data:${mime};base64,${msg.base64}` : toDataUrl(msg.content, mime),
         filename: msg.filename, // ex.: "Quantopus Exporter/+5511999999999/WhatsApp - Ana - 2026-11-12.txt"
         conflictAction: 'uniquify',
         saveAs: false,

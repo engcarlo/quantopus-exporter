@@ -110,16 +110,18 @@
       <span>Downloads/</span>
       <input type="text" id="folder" placeholder="Quantopus Exporter" spellcheck="false">
     </div>
-    <div class="hint">Cada conversa vai para <b>Downloads/&lt;pasta&gt;/&lt;número&gt;/</b>, sem perguntar nada.</div>
-    <div class="hint">O Chrome abre "Salvar como" a cada arquivo? <a href="#" id="openDlSettings">Desligue "Perguntar onde salvar"</a> (uma vez só).</div>
+    <div class="hint">Os arquivos vão para <b>Downloads/&lt;pasta&gt;/</b>. Se o Chrome perguntar onde salvar, <a href="#" id="openDlSettings">desligue "Perguntar onde salvar"</a> (uma vez só).</div>
 
     <div class="chat" id="oneBox" style="margin-top:10px"><b>Conversa aberta</b><span id="chatName">verificando…</span></div>
 
     <div id="allBox" hidden>
       <div class="warn">
         Cada conversa da lista será <b>aberta</b> e exportada, uma por vez. Abrir uma conversa a marca como lida.
-        Cada conversa é <b>salva na hora</b> na pasta escolhida, numa subpasta com o número. No fim, um <b>índice</b> lista o que foi feito.
+        No fim, tudo é entregue num <b>único .zip</b>, com uma pasta por número e um índice: o Chrome pergunta <b>no máximo uma vez</b>.
       </div>
+      <label class="check"><input type="checkbox" id="separateFiles">
+        <span>Salvar cada conversa como arquivo separado<div class="hint">Salva na hora, uma por uma. Só use com "Perguntar onde salvar" desligado, senão o Chrome pergunta a cada arquivo.</div></span>
+      </label>
       <label class="check"><input type="checkbox" id="skipUnread" checked>
         <span>Pular conversas com mensagens não lidas<div class="hint">Para não marcá-las como lidas.</div></span>
       </label>
