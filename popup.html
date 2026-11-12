@@ -11,7 +11,7 @@
          background: linear-gradient(180deg, #e6fbf7 0%, #f8fafc 120px); }
   header { display: flex; align-items: center; gap: 10px; margin: 0 -16px 14px; padding: 14px 16px;
            background: linear-gradient(135deg, #020617, #134e4a); color: #fff; box-shadow: 0 4px 14px rgba(15, 23, 42, .35); }
-  header img { width: 36px; height: 36px; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .45)); }
+  header .logo { flex: none; width: 40px; height: 48px; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .5)); }
   header h1 { font-size: 15px; margin: 0; line-height: 1.2; }
   header small { display: block; font-size: 11px; color: #99f6e4; font-weight: 400; }
   .chat { padding: 9px 11px; background: #fff; border-radius: 10px; margin-bottom: 10px; word-break: break-word;
@@ -39,7 +39,38 @@
 </head>
 <body>
   <header>
-    <img src="icons/48.png" alt="">
+    <svg class="logo" viewBox="14 2 80 96" width="40" height="48" aria-hidden="true">
+      <defs>
+        <radialGradient id="qx-sphere" cx="0.33" cy="0.27" r="0.8">
+          <stop offset="0" stop-color="#5eead4"/>
+          <stop offset="0.5" stop-color="#14b8a6"/>
+          <stop offset="1" stop-color="#0f766e"/>
+        </radialGradient>
+        <linearGradient id="qx-tent" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#14b8a6"/>
+          <stop offset="1" stop-color="#115e59"/>
+        </linearGradient>
+      </defs>
+      <g fill="none" stroke="url(#qx-tent)" stroke-width="8" stroke-linecap="round">
+        <path d="M34 57 C28.6 71 39 78 32.5 89"/>
+        <path d="M46.8 61 C44.2 78 52 83 46.8 93"/>
+        <path d="M59.8 61 C62.4 78 54.6 83 59.8 93"/>
+        <path d="M72.8 57 C78 71 67.6 78 74.1 89"/>
+      </g>
+      <g fill="#5eead4" opacity="0.8">
+        <circle cx="31.5" cy="74" r="1.6"/><circle cx="47.5" cy="78" r="1.6"/>
+        <circle cx="58.5" cy="78" r="1.6"/><circle cx="75" cy="74" r="1.6"/>
+      </g>
+      <polygon points="44.2,58 23.4,68.5 32.5,49" fill="#0f766e"/>
+      <circle cx="52" cy="36" r="26" fill="url(#qx-sphere)"/>
+      <ellipse cx="45" cy="19" rx="12" ry="6" fill="#fff" opacity="0.45"/>
+      <polygon points="48,22 56,22 56,37 63,37 52,49 41,37 48,37" fill="#fff"/>
+      <circle cx="80" cy="17" r="11" fill="#0b1120" stroke="#14b8a6" stroke-width="1.8"/>
+      <g fill="none" stroke="#38bdf8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="72.5,17.5 75.3,20.3 80.3,13.8"/>
+        <polyline points="78.4,19.6 79.1,20.3 84.6,13.8"/>
+      </g>
+    </svg>
     <h1>Quantopus Exporter<small>Conversas do WhatsApp Web · 100% local</small></h1>
   </header>
 
