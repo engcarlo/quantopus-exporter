@@ -66,9 +66,44 @@ async function writeToDir(root, path, content) {
 
 // ---------- Escolha da pasta ----------
 
-function destError(text) {
+function destError(text, kind = 'err') {
   $('destMsg').textContent = text;
+  $('destMsg').className = 'msg ' + kind;
   $('destMsg').hidden = !text;
+}
+
+const BLOCKED_HINT =
+  'Nenhuma pasta foi selecionada. O Chrome não permite usar a raiz de algumas pastas ' +
+  '(Downloads, Documentos, Área de Trabalho e pastas do sistema). Crie ou escolha uma ' +
+  'subpasta dentro delas, por exemplo Downloads\\Quantopus.';
+
+// Abre o seletor de pastas. startIn = 'downloads' começa na pasta Downloads.
+async function pickFolder(startIn) {
+  destError('');
+  let d;
+  try {
+    d = await window.showDirectoryPicker(
+      startIn ? { id: 'quantopus-dl', mode: 'readwrite', startIn } : { id: 'quantopus', mode: 'readwrite' }
+    );
+  } catch (err) {
+    // O Chrome devolve "AbortError" tanto quando o usuário cancela quanto quando recusa
+    // uma pasta protegida. Nos dois casos explicamos o que fazer, em vez de não fazer nada.
+    if (err?.name === 'AbortError') destError(BLOCKED_HINT, 'info');
+    else destError('Não foi possível usar essa pasta: ' + (err?.message || err));
+    return;
+  }
+  try {
+    if ((await d.queryPermission({ mode: 'readwrite' })) !== 'granted' &&
+        (await d.requestPermission({ mode: 'readwrite' })) !== 'granted') {
+      destError('O Chrome não autorizou gravar nessa pasta. Tente de novo e clique em "Permitir"/"Editar arquivos".');
+      return;
+    }
+  } catch (err) {
+    destError('Não foi possível verificar a permissão da pasta: ' + (err?.message || err));
+    return;
+  }
+  try { await idbSet('dir', d); } catch {}
+  start(d);
 }
 
 async function initDest() {
@@ -97,17 +132,8 @@ async function initDest() {
   }
 }
 
-$('pick').addEventListener('click', async () => {
-  try {
-    const d = await window.showDirectoryPicker({ id: 'quantopus', mode: 'readwrite' });
-    try { await idbSet('dir', d); } catch {}
-    start(d);
-  } catch (err) {
-    if (err?.name !== 'AbortError') destError('Não foi possível usar essa pasta: ' + (err?.message || err));
-  }
-});
-
-$('useDownloads').addEventListener('click', () => start(null));
+$('pick').addEventListener('click', () => pickFolder());
+$('useDownloads').addEventListener('click', () => pickFolder('downloads'));
 
 // ---------- Execução e progresso ----------
 
@@ -135,16 +161,36 @@ async function start(chosen) {
   startedAt = Date.now();
   timer = setInterval(() => ($('elapsed').textContent = fmtTime(Date.now() - startedAt)), 1000);
 
+  $('now').textContent = `Pasta "${dir ? dir.name : 'Downloads'}" selecionada. Iniciando…`;
+
   const runOpts = { ...opts, saveMode: dir ? 'dir' : 'downloads', destName: dir ? dir.name : 'Downloads' };
   try {
     const res = await chrome.tabs.sendMessage(tabId, { cmd: command, opts: runOpts });
-    if (!res?.ok) finish({ error: true, title: 'Não foi possível começar', text: res?.error || 'A aba do WhatsApp não respondeu.' });
+    if (!res?.ok) {
+      finish({ error: true, title: 'Não foi possível começar', text: res?.error || 'A aba do WhatsApp não respondeu.' });
+      return;
+    }
   } catch (err) {
-    finish({ error: true, title: 'Não foi possível começar', text: 'A aba do WhatsApp não respondeu. Recarregue o WhatsApp Web e tente de novo.' });
+    finish({
+      error: true,
+      title: 'Não foi possível começar',
+      text: 'A aba do WhatsApp não respondeu. Recarregue o WhatsApp Web (F5), abra o Quantopus de novo e tente outra vez.',
+    });
+    return;
   }
+  // Se a aba aceitou mas nenhum progresso chegar, avisa em vez de ficar parado em silêncio.
+  setTimeout(() => {
+    if (running && !gotProgress) {
+      runMsg('A aba do WhatsApp não enviou nenhum progresso. Se a extensão foi atualizada agora, ' +
+        'recarregue o WhatsApp Web (F5) e comece de novo.', 'err');
+    }
+  }, 10000);
 }
 
+let gotProgress = false;
+
 function update(p) {
+  if (!gotProgress) { gotProgress = true; runMsg(''); }
   if (p.chat) $('now').textContent = p.chat;
   if (p.text != null) $('text').textContent = p.text;
   const bar = $('bar');

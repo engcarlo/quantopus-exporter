@@ -46,7 +46,9 @@
   .msg { font-size: 12.5px; padding: 9px 11px; border-radius: 10px; margin-top: 10px; }
   .msg.err { color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; }
   .msg.ok { color: #14532d; background: #dcfce7; border: 1px solid #bbf7d0; }
+  .msg.info { color: #134e4a; background: #ccfbf1; border: 1px solid #99f6e4; }
   .msg[hidden] { display: none; }
+  .hint { font-size: 12px; color: var(--mute); margin: 10px 0 0; }
 </style>
 </head>
 <body>
@@ -79,7 +81,8 @@
         <p>Escolha a pasta do computador <b>uma vez</b>. Depois, cada conversa é gravada em segundo plano, sem janelas de "Salvar como".</p>
         <button id="useSaved" class="primary" hidden></button>
         <button id="pick" class="primary">Escolher pasta…</button>
-        <button id="useDownloads" class="ghost">Usar a pasta Downloads</button>
+        <button id="useDownloads" class="ghost">Escolher uma subpasta de Downloads…</button>
+        <p class="hint">Dica: o Chrome não aceita a raiz de Downloads, Documentos ou Área de Trabalho. Use uma subpasta, por exemplo <b>Downloads\Quantopus</b> (dá para criá-la na própria janela de escolha).</p>
         <div id="destMsg" class="msg err" hidden></div>
       </div>
       <div class="note">Mantenha esta janela aberta durante a exportação: é ela que grava os arquivos.</div>

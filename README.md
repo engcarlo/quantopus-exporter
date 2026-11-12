@@ -141,12 +141,12 @@ A janela do Quantopus pergunta onde salvar antes de começar:
 |---|---|
 | **Escolher pasta…** | Abre a janela do sistema para escolher **qualquer pasta do computador**, inclusive em outro disco. Isso acontece só uma vez; depois, tudo é gravado em segundo plano. |
 | **Usar a pasta "…"** | Reaproveita a pasta escolhida antes. O Chrome pede para reautorizar uma vez por sessão do navegador, com um clique. |
-| **Usar a pasta Downloads** | Salva dentro da pasta de Downloads do Chrome. |
+| **Escolher uma subpasta de Downloads…** | Abre o seletor já dentro de Downloads, para escolher ou criar uma subpasta (ex.: `Downloads\Quantopus`). |
 
 - O campo **Subpasta de salvamento** do popup (padrão `Quantopus Exporter`) cria uma subpasta dentro da pasta escolhida. Deixe vazio para salvar direto nela, ou use `/` para níveis, por exemplo `Clientes/2026`.
 - Arquivos existentes **não são sobrescritos**: se o nome já existir, o novo vira `… (2).txt`.
-- Na opção **Downloads**, se o Chrome estiver com **"Perguntar onde salvar cada arquivo"** ligado, ele abre a janela de salvar a cada arquivo. Prefira **Escolher pasta…**, ou desligue essa opção em `chrome://settings/downloads`.
-- O Chrome não deixa escolher algumas pastas do sistema (como `C:\`, `C:\Windows` ou a raiz da pasta do usuário). Nesses casos, crie ou escolha uma subpasta.
+- Todos os modos gravam pela janela do Quantopus, então a opção **"Perguntar onde salvar cada arquivo"** do Chrome não interfere. Ela só volta a valer se a janela for fechada no meio da exportação: aí os arquivos restantes vão pelo download comum.
+- **O Chrome não aceita a raiz de algumas pastas:** `Downloads`, `Documentos`, `Área de Trabalho`, a pasta do usuário e pastas do sistema (`C:\`, `C:\Windows` etc.). Se você escolher uma delas, a janela avisa. Crie ou escolha uma **subpasta**, por exemplo `Downloads\Quantopus`; o seletor do Windows tem o botão **Nova pasta**.
 
 O número do contato é lido no painel **Dados do contato**, que a extensão abre e fecha sozinha em cada conversa. Isso leva cerca de 1 a 3 s e não altera nada na conversa.
 

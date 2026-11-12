@@ -943,7 +943,13 @@ ${parts.join('\n')}
 
   // ---------- Mensagens do popup ----------
 
+  // Só a cópia mais recente deste script responde. Se ele for injetado de novo na mesma
+  // aba (extensão recarregada), a cópia anterior fica muda em vez de rodar em paralelo.
+  const instance = {};
+  window.__quantopusInstance = instance;
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (window.__quantopusInstance !== instance) return;
     if (msg?.cmd === 'status') {
       const inChat = !!$main();
       sendResponse({
