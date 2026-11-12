@@ -219,6 +219,8 @@
   function toTXT(msgs, meta) {
     const lines = [
       `Conversa: ${meta.chat}`,
+      ...(meta.number ? [`Número: ${meta.number}`] : []),
+      ...(meta.isGroup ? ['Tipo: grupo'] : []),
       `Exportada em: ${meta.exportedAt}`,
       `Mensagens: ${msgs.length}`,
       '',
@@ -239,7 +241,7 @@
         [m.date, m.time, m.sender, m.fromMe ? 'sim' : 'nao', m.type, m.text, m.quote].map(esc).join(';')
       );
     }
-    return '﻿' + rows.join('\r\n'); // BOM para o Excel abrir acentos corretamente
+    return '\uFEFF' + rows.join('\r\n'); // BOM para o Excel abrir acentos corretamente
   }
 
   function toJSON(msgs, meta) {
@@ -328,130 +330,439 @@ ${parts.join('\n')}
 
   // ---------- Painel de progresso ----------
 
-  function overlay() {
+  function overlay(title, cancelLabel) {
     let el = document.getElementById('wa-exp-overlay');
     if (!el) {
       el = document.createElement('div');
       el.id = 'wa-exp-overlay';
       el.innerHTML =
-        '<div class="wa-exp-title">Exportando conversa</div>' +
+        '<div class="wa-exp-title"></div>' +
         '<div class="wa-exp-status"></div>' +
-        '<button type="button">Parar e exportar o que já carregou</button>';
+        '<button type="button"></button>';
       el.querySelector('button').addEventListener('click', () => {
         job.cancel = true;
       });
       document.body.appendChild(el);
     }
     el.className = '';
-    el.querySelector('.wa-exp-title').textContent = 'Exportando conversa';
+    el.querySelector('.wa-exp-title').textContent = title;
+    el.querySelector('.wa-exp-status').textContent = '';
+    el.querySelector('button').textContent = cancelLabel;
     return el;
   }
 
-  // ---------- Exportação ----------
+  // ---------- Identificação da conversa (número / grupo) ----------
 
-  async function runExport(opts) {
-    job.running = true;
-    job.cancel = false;
-    const ov = overlay();
-    const status = ov.querySelector('.wa-exp-status');
+  // O data-id das mensagens traz o identificador da conversa:
+  //   "false_5511999999999@c.us_3EB0…"           → conversa individual (número)
+  //   "false_120363…@g.us_3EB0…_5511…@c.us"       → grupo
+  //   "false_123456789@lid_3EB0…"                 → contato com ID oculto (sem número)
+  function chatIdentity(msgs, chatName) {
+    for (const m of msgs) {
+      const jid = /^(?:true|false)_([^_]+)_/.exec(m.id || '')?.[1];
+      if (!jid) continue;
+      if (jid.endsWith('@g.us')) return { isGroup: true, number: '' };
+      if (jid.endsWith('@c.us')) return { isGroup: false, number: '+' + jid.split('@')[0] };
+      break;
+    }
+    // Contato não salvo: o próprio título da conversa é o número.
+    if (/^[\d\s()+\-]+$/.test(chatName)) {
+      const digits = chatName.replace(/\D/g, '');
+      if (digits.length >= 8 && digits.length <= 15) return { isGroup: false, number: '+' + digits };
+    }
+    return { isGroup: false, number: '' };
+  }
+
+  const safeName = (s) => s.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/\s+/g, ' ').trim();
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  function fileBase(info) {
+    const parts = ['WhatsApp'];
+    if (info.isGroup) parts.push('Grupo');
+    else if (info.number && info.number !== '+' + info.chat.replace(/\D/g, '')) parts.push(info.number);
+    parts.push(info.chat);
+    return safeName(parts.join(' - ')).slice(0, 110);
+  }
+
+  // Pasta de cada conversa dentro do .zip: o número; grupos e contatos sem número
+  // visível (ID oculto do WhatsApp) usam o nome.
+  function folderName(info) {
+    if (info.isGroup) return safeName(`Grupo - ${info.chat}`).slice(0, 80);
+    if (info.number) return info.number;
+    return safeName(`Sem número - ${info.chat}`).slice(0, 80);
+  }
+
+  const FORMATS = {
+    txt: { mime: 'text/plain;charset=utf-8', build: (msgs, meta) => toTXT(msgs, meta) },
+    html: { mime: 'text/html;charset=utf-8', build: (msgs, meta) => toHTML(msgs, meta) },
+    csv: { mime: 'text/csv;charset=utf-8', build: (msgs) => toCSV(msgs) },
+    json: { mime: 'application/json;charset=utf-8', build: (msgs, meta) => toJSON(msgs, meta) },
+  };
+
+  // ---------- Coleta de uma conversa ----------
+
+  // Lê a conversa aberta (rolando o histórico conforme as opções) e devolve as mensagens.
+  async function collectChat(opts, report) {
     const chat = getChatName();
     const since = opts.since ? new Date(opts.since + 'T00:00:00') : null;
     const store = new Map();
     const order = [];
 
-    try {
-      status.textContent = 'Lendo mensagens visíveis…';
-      merge(parseVisible(), store, order);
+    report('Lendo mensagens visíveis…');
+    merge(parseVisible(), store, order);
 
-      const delay = Math.max(1500, Number(opts.delay) || PACING.delay);
-      const maxMessages = Math.max(0, Number(opts.maxMessages) || 0);
-      const limitLabel = maxMessages ? ` de até ${maxMessages}` : '';
+    const delay = Math.max(1500, Number(opts.delay) || PACING.delay);
+    const maxMessages = Math.max(0, Number(opts.maxMessages) || 0);
+    const limitLabel = maxMessages ? ` de até ${maxMessages}` : '';
+    let partial = false;
 
-      if ((opts.loadAll || since) && !(maxMessages && order.length >= maxMessages)) {
-        const sc = findScroller();
-        if (!sc) throw new Error('Não encontrei a área de mensagens da conversa.');
-        // Considera que chegou ao início após ~10 s sem novas mensagens.
-        const stableLimit = Math.max(4, Math.ceil(10000 / delay));
-        let stable = 0;
-        let loads = 0;
-        while (!job.cancel) {
-          const prevH = sc.scrollHeight;
-          const prevCount = order.length;
-          sc.scrollTop = 0;
-          clickLoadOlder();
-          await sleep(delay);
-          if (!$main() || getChatName() !== chat) throw new Error('A conversa foi trocada durante a exportação.');
-          merge(parseVisible(), store, order);
-          loads++;
-          status.textContent = `Carregando histórico… ${order.length}${limitLabel} mensagens`;
+    if ((opts.loadAll || since) && !(maxMessages && order.length >= maxMessages)) {
+      const sc = findScroller();
+      if (!sc) throw new Error('Não encontrei a área de mensagens da conversa.');
+      // Considera que chegou ao início após ~10 s sem novas mensagens.
+      const stableLimit = Math.max(4, Math.ceil(10000 / delay));
+      let stable = 0;
+      let loads = 0;
+      while (!job.cancel) {
+        const prevH = sc.scrollHeight;
+        const prevCount = order.length;
+        sc.scrollTop = 0;
+        clickLoadOlder();
+        await sleep(delay);
+        if (!$main() || getChatName() !== chat) throw new Error('A conversa foi trocada durante a exportação.');
+        merge(parseVisible(), store, order);
+        loads++;
+        report(`Carregando histórico… ${order.length}${limitLabel} mensagens`);
 
-          if (maxMessages && order.length >= maxMessages) break;
-          if (since) {
-            const oldest = oldestDate(store, order);
-            if (oldest && oldest < since) break;
-          }
-          if (sc.scrollHeight === prevH && order.length === prevCount) {
-            if (++stable >= stableLimit) break;
-          } else stable = 0;
+        if (maxMessages && order.length >= maxMessages) break;
+        if (since) {
+          const oldest = oldestDate(store, order);
+          if (oldest && oldest < since) break;
+        }
+        if (sc.scrollHeight === prevH && order.length === prevCount) {
+          if (++stable >= stableLimit) break;
+        } else stable = 0;
 
-          // Pausa periódica para não puxar o histórico inteiro de uma vez.
-          if (loads % PACING.pauseEvery === 0) {
-            for (let s = PACING.pauseSeconds; s > 0 && !job.cancel; s--) {
-              status.textContent = `Pausa curta (${s} s)… ${order.length}${limitLabel} mensagens até agora`;
-              await sleep(1000);
-            }
+        // Pausa periódica para não puxar o histórico inteiro de uma vez.
+        if (loads % PACING.pauseEvery === 0) {
+          for (let s = PACING.pauseSeconds; s > 0 && !job.cancel; s--) {
+            report(`Pausa curta (${s} s)… ${order.length}${limitLabel} mensagens até agora`);
+            await sleep(1000);
           }
         }
       }
+      partial = job.cancel;
+    }
 
-      let msgs = fillGaps(order.map((id) => store.get(id)), chat);
-      if (since) {
-        msgs = msgs.filter((m) => {
-          const d = parseDate(m.date);
-          return !d || d >= since;
-        });
-      }
-      if (maxMessages && msgs.length > maxMessages) msgs = msgs.slice(-maxMessages); // mantém as mais recentes
-      if (!msgs.length) throw new Error('Nenhuma mensagem encontrada.');
+    let msgs = fillGaps(order.map((id) => store.get(id)), chat);
+    const identity = chatIdentity(msgs, chat);
+    if (since) {
+      msgs = msgs.filter((m) => {
+        const d = parseDate(m.date);
+        return !d || d >= since;
+      });
+    }
+    if (maxMessages && msgs.length > maxMessages) msgs = msgs.slice(-maxMessages); // mantém as mais recentes
+    return { chat, ...identity, msgs, partial };
+  }
 
-      const meta = { chat, exportedAt: new Date().toLocaleString('pt-BR') };
-      const base = `WhatsApp - ${chat}`.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80);
-      const stamp = new Date().toISOString().slice(0, 10);
+  function buildFile(info, format) {
+    const fmt = FORMATS[format];
+    if (!fmt) throw new Error('Formato desconhecido: ' + format);
+    const meta = {
+      chat: info.chat,
+      number: info.number || undefined,
+      isGroup: info.isGroup,
+      exportedAt: new Date().toLocaleString('pt-BR'),
+    };
+    return { name: `${fileBase(info)} - ${today()}.${format}`, content: fmt.build(info.msgs, meta), mime: fmt.mime };
+  }
+
+  // ---------- Exportar a conversa aberta ----------
+
+  async function runExport(opts) {
+    job.running = true;
+    job.cancel = false;
+    const ov = overlay('Exportando conversa', 'Parar e exportar o que já carregou');
+    const status = ov.querySelector('.wa-exp-status');
+    try {
+      const info = await collectChat(opts, (t) => (status.textContent = t));
+      if (!info.msgs.length) throw new Error('Nenhuma mensagem encontrada.');
       const format = opts.format || 'txt';
-      const out = {
-        txt: () => [toTXT(msgs, meta), 'text/plain;charset=utf-8'],
-        html: () => [toHTML(msgs, meta), 'text/html;charset=utf-8'],
-        csv: () => [toCSV(msgs), 'text/csv;charset=utf-8'],
-        json: () => [toJSON(msgs, meta), 'application/json;charset=utf-8'],
-      }[format];
-      if (!out) throw new Error('Formato desconhecido: ' + format);
-      const [content, mime] = out();
-      download(`${base} - ${stamp}.${format}`, content, mime);
-
-      ov.className = 'done';
-      ov.querySelector('.wa-exp-title').textContent = 'Pronto!';
-      status.textContent = `${msgs.length} mensagens exportadas em ${format.toUpperCase()}.`;
+      const file = buildFile(info, format);
+      download(file.name, file.content, file.mime);
+      finish(ov, 'Pronto!', `${info.msgs.length} mensagens exportadas em ${format.toUpperCase()}.`);
     } catch (err) {
-      ov.className = 'done error';
-      ov.querySelector('.wa-exp-title').textContent = 'Erro na exportação';
-      status.textContent = err?.message || String(err);
+      finish(ov, 'Erro na exportação', err?.message || String(err), true);
     } finally {
       job.running = false;
-      setTimeout(() => {
-        if (!job.running) ov.remove();
-      }, 6000);
     }
   }
+
+  function finish(ov, title, text, isError = false, keepMs = 6000) {
+    ov.className = isError ? 'done error' : 'done';
+    ov.querySelector('.wa-exp-title').textContent = title;
+    ov.querySelector('.wa-exp-status').textContent = text;
+    setTimeout(() => {
+      if (!job.running) ov.remove();
+    }, keepMs);
+  }
+
+  // ---------- Lista de conversas (painel da esquerda) ----------
+
+  const $pane = () => document.querySelector('#pane-side');
+
+  function paneScroller() {
+    const pane = $pane();
+    if (!pane) return null;
+    if (pane.scrollHeight > pane.clientHeight + 10) return pane;
+    for (const d of pane.querySelectorAll('div')) {
+      if (d.scrollHeight > d.clientHeight + 10 && /auto|scroll/.test(getComputedStyle(d).overflowY)) return d;
+    }
+    return pane;
+  }
+
+  const UNREAD_RE = /n[ãa]o lida|unread|no le[ií]d/i;
+
+  // Conversas visíveis no painel, em ordem visual (a lista é virtualizada).
+  function listChats() {
+    const pane = $pane();
+    if (!pane) return [];
+    return [...pane.querySelectorAll('[role="listitem"], [role="row"]')]
+      .filter((r) => !r.parentElement?.closest('[role="listitem"], [role="row"]'))
+      .map((row) => {
+        const titleEl = row.querySelector('span[title]');
+        if (!titleEl) return null;
+        const unread = [...row.querySelectorAll('[aria-label]')].some((e) => UNREAD_RE.test(e.getAttribute('aria-label')));
+        return { row, title: titleEl.getAttribute('title').trim(), unread, top: row.getBoundingClientRect().top };
+      })
+      .filter((c) => c && c.title)
+      .sort((a, b) => a.top - b.top);
+  }
+
+  async function openChat(entry) {
+    if ($main() && getChatName() === entry.title) return true;
+    const target = entry.row.querySelector('[role="gridcell"]') || entry.row.firstElementChild || entry.row;
+    for (const type of ['mousedown', 'mouseup', 'click']) {
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }));
+    }
+    const t0 = Date.now();
+    while (Date.now() - t0 < 10000) {
+      await sleep(300);
+      if ($main() && getChatName() === entry.title) {
+        await sleep(1500); // deixa as mensagens renderizarem
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async function waitCancellable(seconds, report, label) {
+    for (let s = seconds; s > 0 && !job.cancel; s--) {
+      report(`${label} (${s} s)…`);
+      await sleep(1000);
+    }
+  }
+
+  // ---------- Exportar todas as conversas ----------
+
+  async function runExportAll(opts) {
+    job.running = true;
+    job.cancel = false;
+    const ov = overlay('Exportando todas as conversas', 'Parar e salvar o que já exportou');
+    const status = ov.querySelector('.wa-exp-status');
+    const format = opts.format || 'txt';
+    const maxChats = Math.max(0, Number(opts.maxChats) || 0);
+    const files = [];
+    const index = [];
+    const seen = new Set();
+    const usedNames = new Set();
+    let exported = 0;
+
+    const uniqueName = (name) => {
+      let n = name;
+      for (let i = 2; usedNames.has(n.toLowerCase()); i++) n = name.replace(/(\.\w+)$/, ` (${i})$1`);
+      usedNames.add(n.toLowerCase());
+      return n;
+    };
+
+    try {
+      const sc = paneScroller();
+      if (!sc) throw new Error('Não encontrei a lista de conversas.');
+      sc.scrollTop = 0;
+      await sleep(1200);
+
+      while (!job.cancel) {
+        if (maxChats && exported >= maxChats) break;
+        const next = listChats().find((c) => !seen.has(c.title));
+        if (!next) {
+          const prev = sc.scrollTop;
+          sc.scrollTop = prev + sc.clientHeight * 0.8;
+          await sleep(1200);
+          if (sc.scrollTop === prev) break; // fim da lista
+          continue;
+        }
+        seen.add(next.title);
+        const n = seen.size;
+        const prefix = `Conversa ${n} · ${next.title}`;
+        const report = (t) => (status.textContent = `${prefix}\n${t}\n${exported} exportada(s) até agora`);
+
+        if (opts.skipUnread && next.unread) {
+          index.push({ chat: next.title, status: 'pulada: mensagens não lidas' });
+          continue;
+        }
+
+        report('Abrindo…');
+        if (!(await openChat(next))) {
+          index.push({ chat: next.title, status: 'erro: não abriu' });
+          continue;
+        }
+
+        const quick = chatIdentity(parseVisible(), next.title);
+        if (quick.isGroup && !opts.includeGroups) {
+          index.push({ chat: next.title, isGroup: true, status: 'pulada: grupo' });
+          continue;
+        }
+
+        try {
+          const info = await collectChat(opts, report);
+          if (!info.msgs.length) {
+            index.push({ chat: info.chat, number: info.number, isGroup: info.isGroup, status: 'sem mensagens' });
+          } else {
+            const file = buildFile(info, format);
+            file.name = uniqueName(`${folderName(info)}/${file.name}`);
+            files.push(file);
+            exported++;
+            index.push({
+              chat: info.chat, number: info.number, isGroup: info.isGroup,
+              count: info.msgs.length, file: file.name, status: info.partial ? 'parcial' : 'ok',
+            });
+          }
+        } catch (err) {
+          index.push({ chat: next.title, status: 'erro: ' + (err?.message || err) });
+        }
+
+        // Pausa entre conversas, e uma pausa maior a cada 10 exportadas.
+        if (!job.cancel) {
+          if (exported && exported % 10 === 0) await waitCancellable(30, report, 'Pausa longa');
+          else await waitCancellable(Math.round((Number(opts.delay) || PACING.delay) / 500), report, 'Próxima conversa em');
+        }
+      }
+
+      if (!files.length) throw new Error('Nenhuma conversa foi exportada.');
+
+      status.textContent = 'Montando o arquivo .zip…';
+      const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const indexCsv =
+        '\uFEFF' +
+        [['conversa', 'numero', 'grupo', 'mensagens', 'arquivo', 'status'].join(';')]
+          .concat(index.map((r) => [r.chat, r.number, r.isGroup ? 'sim' : 'nao', r.count ?? '', r.file ?? '', r.status].map(esc).join(';')))
+          .join('\r\n');
+      const zip = makeZip([...files.map((f) => ({ name: f.name, data: f.content })), { name: 'indice.csv', data: indexCsv }]);
+      download(`Quantopus - conversas do WhatsApp - ${today()}.zip`, zip, 'application/zip');
+
+      const skipped = index.length - exported;
+      finish(ov, 'Pronto!', `${exported} conversa(s) exportada(s) em ${format.toUpperCase()}` +
+        (skipped ? `, ${skipped} pulada(s) ou com erro (veja indice.csv).` : '.'), false, 15000);
+    } catch (err) {
+      finish(ov, 'Erro na exportação', err?.message || String(err), true, 15000);
+    } finally {
+      job.running = false;
+    }
+  }
+
+  // ---------- ZIP (sem compressão, sem dependências) ----------
+
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(bytes) {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  function makeZip(entries) {
+    const enc = new TextEncoder();
+    const d = new Date();
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const chunks = [];
+    const central = [];
+    let offset = 0;
+
+    for (const e of entries) {
+      const name = enc.encode(e.name);
+      const data = typeof e.data === 'string' ? enc.encode(e.data) : e.data;
+      const crc = crc32(data);
+
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(6, 0x0800, true); // nomes em UTF-8
+      local.setUint16(8, 0, true); // sem compressão
+      local.setUint16(10, time, true);
+      local.setUint16(12, date, true);
+      local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true);
+      local.setUint16(26, name.length, true);
+      chunks.push(new Uint8Array(local.buffer), name, data);
+
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true);
+      cd.setUint16(4, 20, true);
+      cd.setUint16(6, 20, true);
+      cd.setUint16(8, 0x0800, true);
+      cd.setUint16(10, 0, true);
+      cd.setUint16(12, time, true);
+      cd.setUint16(14, date, true);
+      cd.setUint32(16, crc, true);
+      cd.setUint32(20, data.length, true);
+      cd.setUint32(24, data.length, true);
+      cd.setUint16(28, name.length, true);
+      cd.setUint32(42, offset, true);
+      central.push(new Uint8Array(cd.buffer), name);
+
+      offset += 30 + name.length + data.length;
+    }
+
+    const cdSize = central.reduce((s, a) => s + a.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, entries.length, true);
+    end.setUint16(10, entries.length, true);
+    end.setUint32(12, cdSize, true);
+    end.setUint32(16, offset, true);
+    return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
+  }
+
+  // ---------- Mensagens do popup ----------
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.cmd === 'status') {
       const inChat = !!$main();
-      sendResponse({ ok: true, inChat, chatName: inChat ? getChatName() : null, running: job.running });
-    } else if (msg?.cmd === 'export') {
+      sendResponse({
+        ok: true,
+        inChat,
+        hasList: !!$pane(),
+        chatName: inChat ? getChatName() : null,
+        running: job.running,
+      });
+    } else if (msg?.cmd === 'export' || msg?.cmd === 'exportAll') {
+      const all = msg.cmd === 'exportAll';
       if (job.running) sendResponse({ ok: false, error: 'Já existe uma exportação em andamento.' });
-      else if (!$main()) sendResponse({ ok: false, error: 'Abra uma conversa no WhatsApp primeiro.' });
+      else if (!all && !$main()) sendResponse({ ok: false, error: 'Abra uma conversa no WhatsApp primeiro.' });
+      else if (all && !$pane()) sendResponse({ ok: false, error: 'Não encontrei a lista de conversas do WhatsApp.' });
       else {
-        runExport(msg.opts || {});
+        (all ? runExportAll : runExport)(msg.opts || {});
         sendResponse({ ok: true });
       }
     }

@@ -32,6 +32,8 @@ FORMATOS
 • JSON — dados estruturados para quem quer analisar ou integrar com outros sistemas.
 
 RECURSOS
+• Exporta todas as conversas de uma vez: um único .zip, com uma pasta por conversa nomeada pelo número do contato.
+• O número do contato aparece no nome dos arquivos.
 • Carrega o histórico completo da conversa, ou só a partir de uma data.
 • Limite opcional de número de mensagens.
 • Mantém emojis, quebras de linha e mensagens respondidas (citações).

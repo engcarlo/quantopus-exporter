@@ -1,6 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const WA = 'https://web.whatsapp.com/';
 let tabId = null;
+let pageStatus = null; // resposta do content script: { inChat, hasList, chatName, running }
 
 // Mensagem de status no topo do popup. kind: 'info' | 'err' | 'ok'
 function show(text, kind = 'info') {
@@ -19,13 +20,32 @@ function action(label, onClick) {
   $('actions').replaceChildren(b);
 }
 
-function setReady(ready, chatName) {
-  $('go').disabled = !ready;
-  $('chatName').textContent = chatName || '—';
-}
-
+const mode = () => document.querySelector('input[name="mode"]:checked').value;
 const load = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
+// Atualiza a tela conforme o modo escolhido e o estado da página.
+function refresh() {
+  const all = mode() === 'all';
+  $('oneBox').hidden = all;
+  $('allBox').hidden = !all;
+  $('go').textContent = all ? 'Exportar todas' : 'Exportar';
+
+  const st = pageStatus;
+  $('chatName').textContent = st?.chatName || '—';
+  if (!st) { $('go').disabled = true; return; }
+
+  if (st.running) {
+    $('go').disabled = true;
+    show('Já existe uma exportação em andamento nesta aba.');
+  } else if (all) {
+    $('go').disabled = !st.hasList;
+    show(st.hasList ? '' : 'A lista de conversas do WhatsApp ainda não carregou. Aguarde e abra este menu de novo.');
+  } else {
+    $('go').disabled = !st.inChat;
+    show(st.inChat ? '' : 'Clique em uma conversa no WhatsApp Web e abra este menu de novo, ou escolha "Todas as conversas".');
+  }
+}
 
 // Envia mensagem ao content script; se ele não responder (extensão instalada ou
 // recarregada com o WhatsApp já aberto), injeta o script e tenta de novo.
@@ -42,20 +62,23 @@ async function send(msg) {
 async function init() {
   if (load('format')) $('format').value = load('format');
   if (load('speed')) $('speed').value = load('speed');
-  setReady(false);
+  if (load('mode') === 'all') document.querySelector('input[name="mode"][value="all"]').checked = true;
+  for (const r of document.querySelectorAll('input[name="mode"]')) {
+    r.addEventListener('change', () => { save('mode', mode()); refresh(); });
+  }
+  refresh();
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   tabId = tab?.id ?? null;
 
   if (!tab?.url?.startsWith(WA)) {
-    show('Abra o WhatsApp Web nesta aba para exportar uma conversa.');
+    show('Abra o WhatsApp Web nesta aba para exportar conversas.');
     action('Abrir WhatsApp Web', () => chrome.tabs.create({ url: WA }));
     return;
   }
 
-  let st;
   try {
-    st = await send({ cmd: 'status' });
+    pageStatus = await send({ cmd: 'status' });
   } catch {
     show('Não consegui me conectar à página do WhatsApp Web. Recarregue a página e abra este menu de novo.', 'err');
     action('Recarregar WhatsApp Web', async () => {
@@ -64,17 +87,11 @@ async function init() {
     });
     return;
   }
-
-  if (!st?.inChat) {
-    show('Clique em uma conversa no WhatsApp Web e abra este menu de novo.');
-    return;
-  }
-
-  setReady(!st.running, st.chatName);
-  if (st.running) show('Já existe uma exportação em andamento nesta aba.');
+  refresh();
 }
 
 $('go').addEventListener('click', async () => {
+  const all = mode() === 'all';
   const opts = {
     format: $('format').value,
     loadAll: $('loadAll').checked,
@@ -82,17 +99,27 @@ $('go').addEventListener('click', async () => {
     delay: Number($('speed').value),
     maxMessages: parseInt($('maxMessages').value, 10) || 0,
   };
+  if (all) {
+    opts.skipUnread = $('skipUnread').checked;
+    opts.includeGroups = $('includeGroups').checked;
+    opts.maxChats = parseInt($('maxChats').value, 10) || 0;
+  }
   save('format', opts.format);
   save('speed', $('speed').value);
   $('go').disabled = true;
   try {
-    const res = await send({ cmd: 'export', opts });
+    const res = await send({ cmd: all ? 'exportAll' : 'export', opts });
     if (!res?.ok) {
       $('go').disabled = false;
       show(res?.error || 'Falha ao iniciar a exportação.', 'err');
       return;
     }
-    show('Exportação iniciada! Acompanhe o progresso no canto da tela do WhatsApp. O arquivo será baixado automaticamente.', 'ok');
+    show(
+      all
+        ? 'Exportação iniciada! As conversas serão abertas uma a uma. Não use o WhatsApp nessa aba até terminar; o .zip será baixado no final.'
+        : 'Exportação iniciada! Acompanhe o progresso no canto da tela do WhatsApp. O arquivo será baixado automaticamente.',
+      'ok'
+    );
   } catch (e) {
     $('go').disabled = false;
     show('Erro: ' + (e?.message || e), 'err');

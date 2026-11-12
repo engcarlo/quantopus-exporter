@@ -69,6 +69,8 @@ Alguns usos:
 | | Recurso | Detalhe |
 |---|---|---|
 | 📄 | **4 formatos** | TXT, HTML, CSV e JSON |
+| 🐙 | **Todas as conversas de uma vez** | Abre e exporta cada conversa da lista e entrega um único `.zip`, com **uma pasta por conversa nomeada pelo número** |
+| 📇 | **Número no nome** | Os arquivos levam o número do contato (ex.: `+5511999999999`), além do nome |
 | 📜 | **Histórico completo** | Rola a conversa até o início e carrega as mensagens antigas automaticamente |
 | 📅 | **Filtro por data** | Exporta só as mensagens a partir de um dia escolhido |
 | 🔢 | **Limite de mensagens** | Exporta só as N mensagens mais recentes |
@@ -123,11 +125,49 @@ Quando a extensão estiver publicada na Chrome Web Store e na Microsoft Edge Add
    - `Carregando histórico… 1.240 mensagens`
    - `Pausa curta (15 s)… 2.500 mensagens até agora`
 6. No fim, o arquivo é baixado automaticamente com o nome
-   `WhatsApp - <nome da conversa> - <AAAA-MM-DD>.<formato>`.
+   `WhatsApp - <número> - <nome da conversa> - <AAAA-MM-DD>.<formato>`.
+   Em grupos, o nome começa com `WhatsApp - Grupo - …`. Se o número não estiver disponível (veja [Limitações](#limitações-conhecidas)), fica só o nome.
 
 > **Parar e exportar o que já carregou:** esse botão do painel interrompe a rolagem e gera o arquivo na hora, com o que já foi lido.
 
 > **Não troque de conversa durante a exportação.** Se trocar, a extensão percebe e cancela, para não misturar mensagens de conversas diferentes.
+
+### Exportar todas as conversas
+
+1. No popup, escolha **Todas as conversas**. Não precisa ter nenhuma conversa aberta.
+2. Ajuste as opções extras:
+   - **Pular conversas com mensagens não lidas** (ligado por padrão): abrir uma conversa a marca como lida, então essas ficam de fora;
+   - **Incluir grupos**;
+   - **Máximo de conversas** (opcional).
+3. Clique em **Exportar todas**. A extensão vai, de cima para baixo na lista:
+   1. abrir a conversa;
+   2. exportar com as mesmas opções de formato, histórico, data e limite;
+   3. esperar alguns segundos e seguir para a próxima. A cada 10 conversas, faz uma pausa de 30 s.
+4. No fim, baixa um único arquivo `Quantopus - conversas do WhatsApp - <AAAA-MM-DD>.zip`:
+
+```text
+Quantopus - conversas do WhatsApp - 2026-11-12.zip
+├── +5511999999999/
+│   └── WhatsApp - +5511999999999 - Ana - 2026-11-12.txt
+├── +5521988887777/
+│   └── WhatsApp - +5521988887777 - Dr. Paulo - 2026-11-12.txt
+├── Grupo - Equipe Clínica/
+│   └── WhatsApp - Grupo - Equipe Clínica - 2026-11-12.txt
+├── Sem número - Fornecedor X/
+│   └── WhatsApp - Fornecedor X - 2026-11-12.txt
+└── indice.csv
+```
+
+- Cada conversa fica em **sua própria pasta, com o número como nome**.
+- Grupos ficam em `Grupo - <nome>`.
+- Contatos cujo número o WhatsApp não mostra ficam em `Sem número - <nome>`.
+- O **`indice.csv`** lista todas as conversas encontradas, com número, se é grupo, quantidade de mensagens, caminho do arquivo e status: `ok`, `parcial`, `pulada: mensagens não lidas`, `pulada: grupo`, `sem mensagens` ou `erro: …`.
+
+> **Parar e salvar o que já exportou:** interrompe o processo e gera o `.zip` com as conversas já concluídas. A conversa em andamento entra como `parcial`.
+
+> **Dica:** para muitas conversas, desligue **Carregar todo o histórico** (exporta só as mensagens recentes de cada uma) ou use **Somente a partir de** para limitar o período. Com o histórico completo, o processo pode levar horas.
+
+> **Durante a exportação, não use o WhatsApp nessa aba:** clicar em outra conversa atrapalha o processo. Você pode usar outras abas e programas normalmente.
 
 ---
 
@@ -135,6 +175,10 @@ Quando a extensão estiver publicada na Chrome Web Store e na Microsoft Edge Add
 
 | Opção | Valores | O que faz |
 |---|---|---|
+| **O que exportar** | Conversa aberta / Todas as conversas | Exporta só a conversa aberta ou percorre a lista inteira e gera um `.zip`. Veja [Exportar todas as conversas](#exportar-todas-as-conversas). |
+| **Pular não lidas** *(todas)* | ligado / desligado | Não abre conversas com mensagens não lidas, para não marcá-las como lidas. |
+| **Incluir grupos** *(todas)* | ligado / desligado | Inclui ou não os grupos na exportação. |
+| **Máximo de conversas** *(todas)* | número (opcional) | Para depois de exportar essa quantidade de conversas, de cima para baixo na lista. |
 | **Formato** | TXT, HTML, CSV, JSON | Tipo do arquivo gerado. Veja [Formatos de saída](#formatos-de-saída). A extensão lembra a última escolha. |
 | **Carregar todo o histórico** | ligado / desligado | **Ligado:** rola a conversa até o início, carregando as mensagens antigas. **Desligado:** exporta só o que já está carregado na tela. |
 | **Ritmo de carregamento** | Normal (2 s) / Cauteloso (3 s) | Tempo de espera entre uma rolagem e a próxima. A cada 50 rolagens há uma pausa de 15 s. A extensão lembra a escolha. |
@@ -154,7 +198,8 @@ As opções combinam entre si. Por exemplo: "a partir de 01/01/2026, no máximo 
 Ideal para leitura rápida, arquivamento ou para colar em outro lugar.
 
 ```text
-Conversa: Clínica - Recepção
+Conversa: Ana
+Número: +5511999999999
 Exportada em: 12/11/2026, 09:41:07
 Mensagens: 4
 
@@ -199,7 +244,9 @@ Para integrar com outros sistemas, rodar análises em Python ou JavaScript ou im
 
 ```json
 {
-  "chat": "Clínica - Recepção",
+  "chat": "Ana",
+  "number": "+5511999999999",
+  "isGroup": false,
   "exportedAt": "12/11/2026, 09:41:07",
   "total": 2,
   "messages": [
@@ -303,7 +350,10 @@ A extensão **não envia mensagens** nem usa as funções internas do WhatsApp. 
 - **Mídias sem legenda** não têm data nem remetente visíveis na página. A extensão herda esses dados da mensagem vizinha. Em grupos, o remetente pode aparecer como `?`.
 - **Formato de data:** a data é exportada como o WhatsApp mostra, que depende do idioma configurado (ex.: `05/11/2026` em português, `11/5/2026` em inglês dos EUA).
 - **Mudanças no WhatsApp Web:** a extensão lê a estrutura da página. Se o WhatsApp mudar o layout, a leitura pode falhar até a extensão ser atualizada. Veja [Como funciona por dentro](#como-funciona-por-dentro).
-- **Uma conversa por vez:** ainda não dá para exportar várias conversas de uma vez.
+- **Número do contato:** o número sai do identificador interno das mensagens. Em alguns contatos, o WhatsApp usa um ID oculto (`@lid`) em vez do número. Nesses casos o número não fica disponível, e a conversa é salva pelo nome (`Sem número - <nome>`).
+- **Exportar todas marca como lidas:** abrir uma conversa envia a confirmação de leitura, como se você a abrisse manualmente. Use a opção **Pular conversas com mensagens não lidas** para evitar isso.
+- **Conversas arquivadas** não entram na exportação de todas as conversas, só as da lista principal.
+- **Conversas com o mesmo nome:** na exportação de todas, a lista é percorrida pelo nome exibido. Dois contatos salvos com exatamente o mesmo nome podem fazer um deles ser pulado.
 - **Navegadores:** testada para Chrome e Edge (Chromium). Firefox e Safari ainda não são suportados.
 
 ---
@@ -369,6 +419,8 @@ Os pontos que dependem da estrutura da página estão concentrados em [`content.
 | `parseVisible()` / `parseRow()` | Seletores de mensagem (`div[data-id]`, `[data-pre-plain-text]`, `span.selectable-text`) |
 | `detectType()` | Ícones usados para identificar o tipo de mídia |
 | `clickLoadOlder()` | Texto do botão "carregar mensagens mais antigas" |
+| `listChats()` / `openChat()` | Itens da lista de conversas (`#pane-side`, `[role="listitem"]`) e como abri-los |
+| `chatIdentity()` | Como o número e o tipo (grupo ou individual) são extraídos do `data-id` |
 
 ---
 
@@ -457,7 +509,8 @@ As lojas exigem uma versão maior a cada envio.
 
 - [ ] Exportar para **PDF** direto
 - [ ] Baixar as **mídias** (fotos, áudios, documentos) num `.zip` junto com a conversa
-- [ ] Exportar **várias conversas** em sequência
+- [x] Exportar **todas as conversas** em sequência, num `.zip` com uma pasta por número (v1.1.0)
+- [ ] Incluir **conversas arquivadas** na exportação de todas
 - [ ] Filtro por **intervalo de datas** (de / até)
 - [ ] Datas em **formato ISO** (`AAAA-MM-DD`) como opção
 - [ ] Interface em **inglês e espanhol**

@@ -19,6 +19,7 @@
 }
 #wa-exp-overlay .wa-exp-status {
   margin-bottom: 10px;
+  white-space: pre-line;
   word-break: break-word;
 }
 #wa-exp-overlay button {

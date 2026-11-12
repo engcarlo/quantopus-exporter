@@ -31,6 +31,14 @@
   button:hover { filter: brightness(1.06); }
   button:active { transform: translateY(4px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 1px 0 var(--slab), 0 3px 6px rgba(30, 58, 138, .4); }
   button:disabled { background: #94a3b8; box-shadow: 0 5px 0 #64748b; transform: none; cursor: default; filter: none; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; padding: 4px; background: #e2e8f0; border-radius: 12px; }
+  .mode { margin: 0; font-weight: 600; font-size: 12.5px; }
+  .mode input { position: absolute; opacity: 0; pointer-events: none; }
+  .mode span { display: block; text-align: center; padding: 7px 4px; border-radius: 9px; color: #475569; cursor: pointer; }
+  .mode input:checked + span { background: #fff; color: #115e59; box-shadow: 0 1px 0 #fff inset, 0 2px 0 #99f6e4, 0 4px 10px rgba(15, 23, 42, .1); }
+  .mode input:focus-visible + span { outline: 2px solid var(--blue-top); }
+  .warn { padding: 9px 11px; border-radius: 10px; font-size: 12px; line-height: 1.45; color: #78350f; background: #fef3c7; border: 1px solid #fde68a; }
+  #allBox[hidden], #oneBox[hidden] { display: none; }
   #msg { margin: 0 0 10px; padding: 9px 11px; border-radius: 10px; font-size: 12.5px; line-height: 1.45;
          color: #134e4a; background: #ccfbf1; border: 1px solid #99f6e4; }
   #msg.err { color: #991b1b; background: #fee2e2; border-color: #fecaca; }
@@ -85,7 +93,27 @@
   <div id="actions"></div>
 
   <div id="form">
-    <div class="chat"><b>Conversa aberta</b><span id="chatName">verificando…</span></div>
+    <div class="modes" role="radiogroup" aria-label="O que exportar">
+      <label class="mode"><input type="radio" name="mode" value="one" checked><span>Conversa aberta</span></label>
+      <label class="mode"><input type="radio" name="mode" value="all"><span>Todas as conversas</span></label>
+    </div>
+
+    <div class="chat" id="oneBox"><b>Conversa aberta</b><span id="chatName">verificando…</span></div>
+
+    <div id="allBox" hidden>
+      <div class="warn">
+        Cada conversa da lista será <b>aberta</b> e exportada, uma por vez. Abrir uma conversa a marca como lida.
+        O resultado é um único <b>.zip</b>, com uma pasta por conversa nomeada pelo número.
+      </div>
+      <label class="check"><input type="checkbox" id="skipUnread" checked>
+        <span>Pular conversas com mensagens não lidas<div class="hint">Para não marcá-las como lidas.</div></span>
+      </label>
+      <label class="check"><input type="checkbox" id="includeGroups" checked>
+        <span>Incluir grupos</span>
+      </label>
+      <label for="maxChats">Máximo de conversas (opcional)</label>
+      <input type="number" id="maxChats" min="1" step="10" placeholder="todas">
+    </div>
 
     <label for="format">Formato</label>
     <select id="format">
