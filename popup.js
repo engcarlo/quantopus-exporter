@@ -111,18 +111,29 @@ $('go').addEventListener('click', async () => {
   save('speed', $('speed').value);
   $('go').disabled = true;
   try {
-    const res = await send({ cmd: all ? 'exportAll' : 'export', opts });
-    if (!res?.ok) {
+    // Garante que o script está ativo na aba antes de abrir a janela de progresso.
+    const st = await send({ cmd: 'status' });
+    if (st?.running) {
       $('go').disabled = false;
-      show(res?.error || 'Falha ao iniciar a exportação.', 'err');
+      show('Já existe uma exportação em andamento nesta aba.', 'err');
       return;
     }
-    show(
-      all
-        ? 'Exportação iniciada! Se for a primeira vez, escolha a pasta no painel do WhatsApp (canto inferior direito). Depois as conversas são abertas e salvas uma a uma; não use o WhatsApp nessa aba até terminar.'
-        : 'Exportação iniciada! Se for a primeira vez, escolha a pasta no painel do WhatsApp (canto inferior direito). O arquivo é salvo em segundo plano.',
-      'ok'
-    );
+    // A janela flutuante escolhe a pasta, inicia a exportação e mostra o progresso.
+    const url = chrome.runtime.getURL('progress.html') +
+      `?tab=${tabId}&cmd=${all ? 'exportAll' : 'export'}&opts=${encodeURIComponent(JSON.stringify(opts))}`;
+    const cur = await chrome.windows.getCurrent();
+    const width = 420;
+    const height = 600;
+    await chrome.windows.create({
+      url,
+      type: 'popup',
+      width,
+      height,
+      left: Math.max(0, (cur.left ?? 0) + (cur.width ?? width) - width - 24),
+      top: Math.max(0, (cur.top ?? 0) + 80),
+      focused: true,
+    });
+    window.close();
   } catch (e) {
     $('go').disabled = false;
     show('Erro: ' + (e?.message || e), 'err');

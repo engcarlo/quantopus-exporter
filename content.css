@@ -38,21 +38,31 @@
 #wa-exp-overlay.done button {
   display: none;
 }
-#wa-exp-overlay .wa-exp-choose {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 10px;
+#wa-exp-overlay .wa-exp-bar {
+  position: relative;
+  height: 10px;
+  margin: 2px 0 10px;
+  border-radius: 999px;
+  background: #2a3942;
+  overflow: hidden;
 }
-#wa-exp-overlay .wa-exp-choose[hidden] {
-  display: none;
+#wa-exp-overlay .wa-exp-bar > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #5eead4, #14b8a6 55%, #0f766e);
+  transition: width 0.4s ease;
 }
-#wa-exp-overlay .wa-exp-choose button.primary {
-  background: linear-gradient(180deg, #2dd4bf, #0d9488);
-  color: #fff;
-  font-weight: 600;
+#wa-exp-overlay .wa-exp-bar.indeterminate > i {
+  width: 35%;
+  animation: wa-exp-slide 1.4s ease-in-out infinite;
 }
-#wa-exp-overlay .wa-exp-choose button.primary:hover {
-  filter: brightness(1.08);
+@keyframes wa-exp-slide {
+  0% { left: -35%; }
+  100% { left: 100%; }
 }
 #wa-exp-overlay.error .wa-exp-title {
   color: #f15c6d;

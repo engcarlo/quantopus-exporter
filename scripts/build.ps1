@@ -10,6 +10,7 @@ $manifest = Get-Content (Join-Path $root 'manifest.json') -Raw -Encoding UTF8 | 
 $version = $manifest.version
 
 $files = @('manifest.json', 'background.js', 'content.js', 'content.css', 'popup.html', 'popup.js',
+           'progress.html', 'progress.js',
            'icons/16.png', 'icons/48.png', 'icons/128.png')
 foreach ($f in $files) {
     if (-not (Test-Path (Join-Path $root $f))) {

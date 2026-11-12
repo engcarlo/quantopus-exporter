@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Quantopus Exporter</title>
+<style>
+  :root { --ink:#0f172a; --mute:#64748b; --line:#cbd5e1; --teal:#0d9488; --teal-top:#2dd4bf; --teal-deep:#115e59; --slab:#134e4a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink);
+         background: linear-gradient(180deg, #e6fbf7 0%, #f8fafc 160px); display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; color: #fff;
+           background: linear-gradient(135deg, #020617, #134e4a); box-shadow: 0 4px 14px rgba(15, 23, 42, .35); }
+  header svg { flex: none; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .5)); }
+  header h1 { font-size: 15px; margin: 0; line-height: 1.2; }
+  header small { display: block; font-size: 11.5px; color: #99f6e4; font-weight: 400; }
+  main { flex: 1; padding: 16px; overflow: auto; }
+  section[hidden] { display: none; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--mute); margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  .card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 0 #fff inset, 0 2px 0 var(--line), 0 8px 18px rgba(15, 23, 42, .08); margin-bottom: 12px; }
+  button { width: 100%; padding: 10px; border: 0; border-radius: 12px; font: inherit; font-weight: 700; cursor: pointer; margin-top: 8px; }
+  button.primary { color: #fff; background: linear-gradient(180deg, var(--teal-top), var(--teal) 55%, var(--teal-deep));
+                   box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 5px 0 var(--slab), 0 9px 16px rgba(13,148,136,.4); text-shadow: 0 1px 1px rgba(0,0,0,.3); }
+  button.primary:active { transform: translateY(4px); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 1px 0 var(--slab); }
+  button.ghost { color: var(--teal-deep); background: #fff; box-shadow: inset 0 0 0 1.5px var(--teal-top), 0 3px 0 #99f6e4; }
+  button.danger { color: #991b1b; background: #fff; box-shadow: inset 0 0 0 1.5px #fca5a5, 0 3px 0 #fecaca; }
+  button[hidden] { display: none; }
+  .bar { position: relative; height: 18px; border-radius: 999px; background: #e2e8f0; overflow: hidden;
+         box-shadow: inset 0 2px 4px rgba(15, 23, 42, .15); }
+  .bar > i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 999px; transition: width .4s ease;
+             background: linear-gradient(180deg, #5eead4, #14b8a6 55%, #0f766e);
+             box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
+  .bar.indeterminate > i { width: 35%; animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0% { left: -35%; } 100% { left: 100%; } }
+  .pct { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--mute); margin: 6px 0 12px; }
+  .now { font-weight: 700; word-break: break-word; }
+  .text { color: #334155; font-size: 13px; white-space: pre-line; min-height: 2.9em; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { background: #f1f5f9; border-radius: 10px; padding: 8px; text-align: center; }
+  .stat b { display: block; font-size: 20px; line-height: 1.1; }
+  .stat span { font-size: 11.5px; color: var(--mute); }
+  .stat.ok b { color: #0f766e; } .stat.skip b { color: #b45309; } .stat.err b { color: #b91c1c; }
+  .dest { font-size: 12.5px; color: var(--mute); margin-top: 10px; word-break: break-all; }
+  .note { font-size: 12px; color: #78350f; background: #fef3c7; border: 1px solid #fde68a; border-radius: 10px; padding: 8px 10px; }
+  .msg { font-size: 12.5px; padding: 9px 11px; border-radius: 10px; margin-top: 10px; }
+  .msg.err { color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; }
+  .msg.ok { color: #14532d; background: #dcfce7; border: 1px solid #bbf7d0; }
+  .msg[hidden] { display: none; }
+</style>
+</head>
+<body>
+  <header>
+    <svg viewBox="14 2 80 96" width="34" height="41" aria-hidden="true">
+      <defs>
+        <radialGradient id="s" cx="0.33" cy="0.27" r="0.8"><stop offset="0" stop-color="#5eead4"/><stop offset="0.5" stop-color="#14b8a6"/><stop offset="1" stop-color="#0f766e"/></radialGradient>
+        <linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#115e59"/></linearGradient>
+      </defs>
+      <g fill="none" stroke="url(#t)" stroke-width="8" stroke-linecap="round">
+        <path d="M34 57 C28.6 71 39 78 32.5 89"/><path d="M46.8 61 C44.2 78 52 83 46.8 93"/>
+        <path d="M59.8 61 C62.4 78 54.6 83 59.8 93"/><path d="M72.8 57 C78 71 67.6 78 74.1 89"/>
+      </g>
+      <polygon points="44.2,58 23.4,68.5 32.5,49" fill="#0f766e"/>
+      <circle cx="52" cy="36" r="26" fill="url(#s)"/>
+      <ellipse cx="45" cy="19" rx="12" ry="6" fill="#fff" opacity="0.45"/>
+      <polygon points="48,22 56,22 56,37 63,37 52,49 41,37 48,37" fill="#fff"/>
+      <circle cx="80" cy="17" r="11" fill="#0b1120" stroke="#14b8a6" stroke-width="1.8"/>
+      <g fill="none" stroke="#38bdf8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="72.5,17.5 75.3,20.3 80.3,13.8"/><polyline points="78.4,19.6 79.1,20.3 84.6,13.8"/>
+      </g>
+    </svg>
+    <h1>Quantopus Exporter<small id="subtitle">Exportação de conversas</small></h1>
+  </header>
+
+  <main>
+    <section id="stepDest">
+      <div class="card">
+        <h2>1 · Onde salvar</h2>
+        <p>Escolha a pasta do computador <b>uma vez</b>. Depois, cada conversa é gravada em segundo plano, sem janelas de "Salvar como".</p>
+        <button id="useSaved" class="primary" hidden></button>
+        <button id="pick" class="primary">Escolher pasta…</button>
+        <button id="useDownloads" class="ghost">Usar a pasta Downloads</button>
+        <div id="destMsg" class="msg err" hidden></div>
+      </div>
+      <div class="note">Mantenha esta janela aberta durante a exportação: é ela que grava os arquivos.</div>
+    </section>
+
+    <section id="stepRun" hidden>
+      <div class="card">
+        <h2 id="runTitle">2 · Exportando</h2>
+        <div class="now" id="now">Preparando…</div>
+        <div class="bar indeterminate" id="bar"><i></i></div>
+        <div class="pct"><span id="count">—</span><span id="elapsed">0:00</span></div>
+        <div class="text" id="text"></div>
+        <div class="stats" id="stats">
+          <div class="stat ok"><b id="nOk">0</b><span>salvas</span></div>
+          <div class="stat skip"><b id="nSkip">0</b><span>puladas</span></div>
+          <div class="stat err"><b id="nErr">0</b><span>erros</span></div>
+        </div>
+        <div class="dest" id="dest"></div>
+        <div id="runMsg" class="msg" hidden></div>
+        <button id="stop" class="danger">Parar e salvar o que já exportou</button>
+        <button id="close" class="ghost" hidden>Fechar</button>
+      </div>
+      <div class="note" id="keepOpen">Mantenha esta janela e a aba do WhatsApp abertas. Não use o WhatsApp nessa aba até terminar.</div>
+    </section>
+  </main>
+
+  <script src="progress.js"></script>
+</body>
+</html>

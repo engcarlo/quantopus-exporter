@@ -7,7 +7,7 @@
   // a aba não responde, então não há risco de listeners duplicados.
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const job = { running: false, cancel: false };
+  const job = { running: false, cancel: false, progress: {} };
 
   // Ritmo de carregamento do histórico: espera entre rolagens e pausa periódica.
   const PACING = { delay: 2000, pauseEvery: 50, pauseSeconds: 15 };
@@ -365,8 +365,8 @@ ${parts.join('\n')}
       el.id = 'wa-exp-overlay';
       el.innerHTML =
         '<div class="wa-exp-title"></div>' +
+        '<div class="wa-exp-bar indeterminate"><i></i></div>' +
         '<div class="wa-exp-status"></div>' +
-        '<div class="wa-exp-choose" hidden></div>' +
         '<button type="button" class="wa-exp-cancel"></button>';
       el.querySelector('.wa-exp-cancel').addEventListener('click', () => {
         job.cancel = true;
@@ -376,7 +376,9 @@ ${parts.join('\n')}
     el.className = '';
     el.querySelector('.wa-exp-title').textContent = title;
     el.querySelector('.wa-exp-status').textContent = '';
-    el.querySelector('.wa-exp-choose').hidden = true;
+    const bar = el.querySelector('.wa-exp-bar');
+    bar.className = 'wa-exp-bar indeterminate';
+    bar.firstElementChild.style.width = '';
     el.querySelector('.wa-exp-cancel').textContent = cancelLabel;
     return el;
   }
@@ -516,111 +518,17 @@ ${parts.join('\n')}
   const joinPath = (...parts) => parts.filter(Boolean).join('/');
   const subfolder = (opts) => safePath(opts.folder ?? DEFAULT_FOLDER);
 
-  // ----- Pasta do computador (File System Access API) -----
-  // O usuário escolhe a pasta uma vez; a permissão fica guardada (IndexedDB) e os
-  // arquivos são gravados em segundo plano, sem janela "Salvar como".
+  // Destino escolhido na janela do Quantopus: "dir" (pasta do computador, gravada pela
+  // própria janela) ou "downloads" (chrome.downloads, pelo service worker).
+  const destOf = (opts) => ({ mode: opts.saveMode === 'dir' ? 'dir' : 'downloads', name: opts.destName || 'Downloads' });
 
-  const IDB_NAME = 'quantopus-exporter';
-  const IDB_STORE = 'handles';
-
-  function idbOpen() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(IDB_NAME, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-  async function idbGet(key) {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(key);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-  async function idbSet(key, value) {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).put(value, key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  }
-
-  // Pergunta no painel da página onde salvar (o clique no painel é o gesto do usuário
-  // que o navegador exige). Retorna { dir } (pasta do computador) ou { dir: null } (Downloads).
-  async function chooseDestination(ov) {
-    let saved = null;
-    try { saved = await idbGet('dir'); } catch {}
-    if (saved) {
-      try { if ((await saved.queryPermission({ mode: 'readwrite' })) === 'granted') return { dir: saved }; } catch {}
-    }
-    if (typeof window.showDirectoryPicker !== 'function') return { dir: null };
-
-    const status = ov.querySelector('.wa-exp-status');
-    const box = ov.querySelector('.wa-exp-choose');
-    status.textContent = saved
-      ? `Autorize a gravação na pasta "${saved.name}" (é pedido uma vez por sessão do navegador).`
-      : 'Onde salvar as conversas? Escolha a pasta uma vez; depois tudo é gravado em segundo plano.';
-    box.replaceChildren();
-    box.hidden = false;
-
-    return new Promise((resolve) => {
-      const add = (label, primary, action) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.textContent = label;
-        if (primary) b.className = 'primary';
-        b.addEventListener('click', async () => {
-          try {
-            const result = await action();
-            if (result) { box.hidden = true; resolve(result); }
-          } catch (err) {
-            if (err?.name !== 'AbortError') status.textContent = 'Não foi possível usar essa pasta: ' + (err?.message || err);
-          }
-        });
-        box.appendChild(b);
-      };
-      if (saved) {
-        add(`Usar a pasta "${saved.name}"`, true, async () =>
-          (await saved.requestPermission({ mode: 'readwrite' })) === 'granted' ? { dir: saved } : null);
-      }
-      add(saved ? 'Escolher outra pasta…' : 'Escolher pasta…', !saved, async () => {
-        const dir = await window.showDirectoryPicker({ id: 'quantopus-exporter', mode: 'readwrite' });
-        try { await idbSet('dir', dir); } catch {}
-        return { dir };
-      });
-      add('Usar a pasta Downloads', false, async () => ({ dir: null }));
-    });
-  }
-
-  async function writeToDir(root, path, content) {
-    const parts = path.split('/');
-    const fileName = parts.pop();
-    let dir = root;
-    for (const p of parts) dir = await dir.getDirectoryHandle(p, { create: true });
-    // Não sobrescreve: "arquivo.txt" → "arquivo (2).txt" se já existir.
-    let name = fileName;
-    for (let i = 2; ; i++) {
-      try { await dir.getFileHandle(name); } catch { break; }
-      name = fileName.replace(/(\.\w+)?$/, (ext) => ` (${i})${ext}`);
-    }
-    const fh = await dir.getFileHandle(name, { create: true });
-    const w = await fh.createWritable();
-    await w.write(content);
-    await w.close();
-    return joinPath(...parts, name);
-  }
-
-  // Salva o arquivo: na pasta escolhida do computador, se houver; senão em Downloads
-  // via service worker (chrome.downloads); em último caso, download comum.
+  // Salva o arquivo no destino; se a pasta falhar (ex.: janela fechada), cai para Downloads.
   async function saveFile(dest, path, content, mime) {
-    if (dest?.dir) {
+    if (dest?.mode === 'dir') {
       try {
-        const written = await writeToDir(dest.dir, path, content);
-        return { ok: true, where: `${dest.dir.name}/${written}` };
+        const res = await chrome.runtime.sendMessage({ cmd: 'write', path, content });
+        if (res?.ok) return { ok: true, where: res.where };
+        throw new Error(res?.error || 'a janela do Quantopus não respondeu');
       } catch (err) {
         dest.error = err?.message || String(err); // segue para Downloads
       }
@@ -635,7 +543,25 @@ ${parts.join('\n')}
     }
   }
 
-  const destLabel = (dest, base) => (dest?.dir ? joinPath(dest.dir.name, base) : joinPath('Downloads', base));
+  const destLabel = (dest, base) => joinPath(dest?.name || 'Downloads', base);
+
+  // ---------- Progresso (janela do Quantopus + painel da página) ----------
+
+  function progress(update) {
+    Object.assign(job.progress, update);
+    const p = job.progress;
+    // Barra do painel na página.
+    const bar = document.querySelector('#wa-exp-overlay .wa-exp-bar');
+    if (bar) {
+      if (p.total) {
+        bar.classList.remove('indeterminate');
+        bar.firstElementChild.style.width = Math.min(100, Math.round(((p.current || 0) / p.total) * 100)) + '%';
+      } else bar.classList.add('indeterminate');
+      if (p.done) { bar.classList.remove('indeterminate'); if (!p.error) bar.firstElementChild.style.width = '100%'; }
+    }
+    // Janela do Quantopus (se estiver aberta).
+    try { chrome.runtime.sendMessage({ cmd: 'progress', ...p }).catch(() => {}); } catch {}
+  }
 
   // ---------- Coleta de uma conversa ----------
 
@@ -735,8 +661,10 @@ ${parts.join('\n')}
     const ov = overlay('Exportando conversa', 'Parar e exportar o que já carregou');
     const status = ov.querySelector('.wa-exp-status');
     try {
-      const dest = await chooseDestination(ov);
-      const info = await collectChat(opts, (t) => (status.textContent = t));
+      const dest = destOf(opts);
+      job.progress = {};
+      progress({ chat: getChatName(), current: 0, total: 0, text: 'Começando…' });
+      const info = await collectChat(opts, (t) => { status.textContent = t; progress({ text: t }); });
       if (!info.msgs.length) throw new Error('Nenhuma mensagem encontrada.');
       const format = opts.format || 'txt';
       const file = buildFile(info, format);
@@ -754,9 +682,9 @@ ${parts.join('\n')}
 
   function finish(ov, title, text, isError = false, keepMs = 6000) {
     ov.className = isError ? 'done error' : 'done';
-    ov.querySelector('.wa-exp-choose').hidden = true;
     ov.querySelector('.wa-exp-title').textContent = title;
     ov.querySelector('.wa-exp-status').textContent = text;
+    progress({ done: true, error: isError, title, text });
     setTimeout(() => {
       if (!job.running) ov.remove();
     }, keepMs);
@@ -883,7 +811,7 @@ ${parts.join('\n')}
     const format = opts.format || 'txt';
     const maxChats = Math.max(0, Number(opts.maxChats) || 0);
     const base = subfolder(opts);
-    let dest = { dir: null };
+    const dest = destOf(opts);
     const index = [];
     const seen = new Set();
     let exported = 0;
@@ -891,8 +819,17 @@ ${parts.join('\n')}
     let openFails = 0;
     let abortReason = '';
 
+    // Total de conversas da lista (o WhatsApp informa em aria-rowcount).
+    const listTotal = () => Number($pane()?.querySelector('[role="grid"]')?.getAttribute('aria-rowcount')) || 0;
+    const counts = () => ({
+      exported,
+      skipped: index.filter((r) => /^pulada|^sem mensagens/.test(r.status)).length,
+      failed: index.filter((r) => /^erro/.test(r.status)).length,
+    });
+    job.progress = {};
+    progress({ current: 0, total: listTotal(), chat: 'Preparando a lista de conversas…', text: '', ...counts() });
+
     try {
-      dest = await chooseDestination(ov);
       const sc = paneScroller();
       if (!sc) throw new Error('Não encontrei a lista de conversas.');
       sc.scrollTop = 0;
@@ -910,8 +847,18 @@ ${parts.join('\n')}
         }
         seen.add(next.title);
         const n = seen.size;
-        const prefix = `Conversa ${n} · ${next.title}`;
-        const report = (t) => (status.textContent = `${prefix}\n${t}\n${exported} exportada(s) até agora`);
+        const total = Math.max(listTotal(), n);
+        const prefix = `Conversa ${n}${total ? ` de ${total}` : ''} · ${next.title}`;
+        progress({
+          current: maxChats ? exported + 1 : n,
+          total: maxChats ? Math.min(total, maxChats) : total,
+          chat: next.title,
+          ...counts(),
+        });
+        const report = (t) => {
+          status.textContent = `${prefix}\n${t}\n${exported} exportada(s) até agora`;
+          progress({ text: t, ...counts() });
+        };
 
         if (opts.skipUnread && next.unread) {
           index.push({ chat: next.title, status: 'pulada: mensagens não lidas' });
@@ -1015,6 +962,9 @@ ${parts.join('\n')}
         (all ? runExportAll : runExport)(msg.opts || {});
         sendResponse({ ok: true });
       }
+    } else if (msg?.cmd === 'cancel') {
+      job.cancel = true;
+      sendResponse({ ok: true });
     }
   });
 })();

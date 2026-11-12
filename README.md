@@ -120,17 +120,22 @@ Quando a extensão estiver publicada na Chrome Web Store e na Microsoft Edge Add
    - se quer **carregar todo o histórico**;
    - o **ritmo** de carregamento;
    - opcionalmente, **a partir de qual data** e o **máximo de mensagens**.
-4. Clique em **Exportar**. Você pode fechar o popup: a exportação continua na página.
-5. Um painel no canto inferior direito do WhatsApp mostra o progresso:
+4. Clique em **Exportar**. Abre a **janela flutuante do Quantopus**:
+   1. escolha onde salvar (veja [Pasta de salvamento](#pasta-de-salvamento));
+   2. acompanhe o progresso: barra de avanço, conversa atual, "Conversa X de Y", tempo decorrido e, na exportação de todas, os contadores de **salvas**, **puladas** e **erros**;
+   3. o botão **Parar e salvar o que já exportou** interrompe quando você quiser.
+5. O painel no canto inferior direito do WhatsApp mostra o mesmo progresso, com barra:
    - `Carregando histórico… 1.240 mensagens`
    - `Pausa curta (15 s)… 2.500 mensagens até agora`
+
+> **Mantenha a janela do Quantopus aberta até terminar:** é ela que grava os arquivos na pasta escolhida. Se ela for fechada no meio, os arquivos seguintes vão para Downloads.
 6. No fim, o arquivo é **salvo em segundo plano**, sem janela de "Salvar como", em
    `<pasta escolhida>/<subpasta>/<número>/WhatsApp - <número> - <nome da conversa> - <AAAA-MM-DD>.<formato>`.
    Em grupos, a pasta e o nome começam com `Grupo - …`. Se o número não estiver disponível (veja [Limitações](#limitações-conhecidas)), a pasta fica `Sem número - <nome>`.
 
 ### Pasta de salvamento
 
-Na **primeira exportação**, o painel no canto do WhatsApp pergunta onde salvar:
+A janela do Quantopus pergunta onde salvar antes de começar:
 
 | Botão | O que faz |
 |---|---|
@@ -460,6 +465,7 @@ quantopus-exporter/
 ├── content.js               leitura das mensagens, rolagem, geração e download do arquivo
 ├── content.css              painel de progresso exibido no WhatsApp Web
 ├── popup.html / popup.js    janela de opções da extensão
+├── progress.html / .js      janela flutuante: escolha da pasta, gravação e barra de progresso
 ├── icons/                   ícones 16, 48 e 128 px
 ├── scripts/
 │   ├── make-images.ps1      gera os ícones, o logo 512 px e a imagem promocional (3D)
@@ -535,6 +541,7 @@ As lojas exigem uma versão maior a cada envio.
 - [ ] Baixar as **mídias** (fotos, áudios, documentos) num `.zip` junto com a conversa
 - [x] Exportar **todas as conversas** em sequência, com uma pasta por número (v1.1.0)
 - [x] Salvar direto no disco, numa pasta definida antes de exportar (v1.2.0), em segundo plano em qualquer pasta (v1.3.0)
+- [x] Janela flutuante com barra de progresso (v1.4.0)
 - [ ] Incluir **conversas arquivadas** na exportação de todas
 - [ ] Filtro por **intervalo de datas** (de / até)
 - [ ] Datas em **formato ISO** (`AAAA-MM-DD`) como opção
