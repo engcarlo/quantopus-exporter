@@ -450,7 +450,6 @@ As lojas exigem uma versão maior a cada envio.
 2. Em **Build and deployment**, escolha **Deploy from a branch**, branch `main`, pasta `/docs`.
 3. Em alguns minutos a política estará em
    `https://<seu-usuario>.github.io/quantopus-exporter/privacy-policy.html`.
-4. Antes de publicar, troque `[SEU E-MAIL DE CONTATO]` no arquivo por um contato real.
 
 ---
 
