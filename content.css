@@ -1,0 +1,42 @@
+#wa-exp-overlay {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483647;
+  width: 300px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #111b21;
+  color: #e9edef;
+  font: 14px/1.4 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  border: 1px solid #2a3942;
+}
+#wa-exp-overlay .wa-exp-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #2dd4bf;
+}
+#wa-exp-overlay .wa-exp-status {
+  margin-bottom: 10px;
+  word-break: break-word;
+}
+#wa-exp-overlay button {
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: #2a3942;
+  color: #e9edef;
+  cursor: pointer;
+  font: inherit;
+}
+#wa-exp-overlay button:hover {
+  background: #3b4a54;
+}
+#wa-exp-overlay.done button {
+  display: none;
+}
+#wa-exp-overlay.error .wa-exp-title {
+  color: #f15c6d;
+}

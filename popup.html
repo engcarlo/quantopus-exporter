@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Exportar conversa</title>
+<style>
+  :root { --ink:#0f172a; --mute:#64748b; --line:#cbd5e1; --blue:#0d9488; --blue-top:#2dd4bf; --blue-deep:#115e59; --slab:#134e4a; }
+  * { box-sizing: border-box; }
+  html { background: #f8fafc; }
+  body { width: 320px; margin: 0; padding: 0 16px 14px; font: 13.5px/1.4 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink);
+         background: linear-gradient(180deg, #e6fbf7 0%, #f8fafc 120px); }
+  header { display: flex; align-items: center; gap: 10px; margin: 0 -16px 14px; padding: 14px 16px;
+           background: linear-gradient(135deg, #020617, #134e4a); color: #fff; box-shadow: 0 4px 14px rgba(15, 23, 42, .35); }
+  header img { width: 36px; height: 36px; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .45)); }
+  header h1 { font-size: 15px; margin: 0; line-height: 1.2; }
+  header small { display: block; font-size: 11px; color: #99f6e4; font-weight: 400; }
+  .chat { padding: 9px 11px; background: #fff; border-radius: 10px; margin-bottom: 10px; word-break: break-word;
+          box-shadow: 0 1px 0 #fff inset, 0 2px 0 var(--line), 0 6px 14px rgba(15, 23, 42, .08); }
+  .chat b { display: block; font-size: 11px; color: var(--mute); font-weight: 500; }
+  label { display: block; margin: 10px 0 4px; font-weight: 600; font-size: 12.5px; }
+  select, input[type="date"], input[type="number"] { width: 100%; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff;
+          box-shadow: inset 0 2px 3px rgba(15, 23, 42, .08); }
+  select:focus, input:focus { outline: 2px solid var(--blue-top); outline-offset: 1px; }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 500; }
+  .check input { margin-top: 3px; accent-color: var(--blue); }
+  .hint { font-size: 11.5px; color: var(--mute); margin-top: 3px; font-weight: 400; }
+  button { width: 100%; margin-top: 16px; padding: 10px; border: 0; border-radius: 12px; color: #fff; font: inherit; font-weight: 700; letter-spacing: .2px; cursor: pointer;
+           background: linear-gradient(180deg, var(--blue-top), var(--blue) 55%, var(--blue-deep));
+           box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 5px 0 var(--slab), 0 9px 16px rgba(30, 58, 138, .45);
+           text-shadow: 0 1px 1px rgba(0, 0, 0, .35); transition: transform .08s, box-shadow .08s; }
+  button:hover { filter: brightness(1.06); }
+  button:active { transform: translateY(4px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 1px 0 var(--slab), 0 3px 6px rgba(30, 58, 138, .4); }
+  button:disabled { background: #94a3b8; box-shadow: 0 5px 0 #64748b; transform: none; cursor: default; filter: none; }
+  #msg { margin-top: 12px; font-size: 12.5px; color: #334155; min-height: 1em; }
+  #msg.err { color: #b91c1c; }
+  .hidden { display: none; }
+  footer { margin-top: 12px; font-size: 10.5px; color: #94a3b8; text-align: center; }
+</style>
+</head>
+<body>
+  <header>
+    <img src="icons/48.png" alt="">
+    <h1>Quantopus Exporter<small>Conversas do WhatsApp Web · 100% local</small></h1>
+  </header>
+
+  <div id="form" class="hidden">
+    <div class="chat"><b>Conversa aberta</b><span id="chatName">—</span></div>
+
+    <label for="format">Formato</label>
+    <select id="format">
+      <option value="txt">TXT (igual ao export do celular)</option>
+      <option value="html">HTML (visual de chat)</option>
+      <option value="csv">CSV (Excel / planilha)</option>
+      <option value="json">JSON (dados estruturados)</option>
+    </select>
+
+    <label class="check"><input type="checkbox" id="loadAll" checked>
+      <span>Carregar todo o histórico<div class="hint">Rola a conversa até o início. Conversas longas podem levar minutos.</div></span>
+    </label>
+
+    <label for="speed">Ritmo de carregamento</label>
+    <select id="speed">
+      <option value="2000">Normal (2 s entre rolagens)</option>
+      <option value="3000">Cauteloso (3 s entre rolagens)</option>
+    </select>
+    <div class="hint">A cada 50 rolagens há uma pausa curta de 15 s.</div>
+
+    <label for="since">Somente a partir de (opcional)</label>
+    <input type="date" id="since">
+
+    <label for="maxMessages">Máximo de mensagens (opcional)</label>
+    <input type="number" id="maxMessages" min="1" step="100" placeholder="sem limite">
+    <div class="hint">Exporta só as mais recentes até esse número.</div>
+
+    <button id="go">Exportar</button>
+  </div>
+
+  <div id="msg"></div>
+  <footer>Não afiliado ao WhatsApp nem à Meta.</footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
